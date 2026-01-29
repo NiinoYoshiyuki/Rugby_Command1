@@ -824,23 +824,19 @@
     function closeModal() { document.getElementById('player-select-modal').style.display = 'none'; }
     function startLinkedMgtTimer(mid, durSeconds) { managementSeconds[mid] = durSeconds; updateMgtTimerDisplay(mid, managementSeconds[mid]); managementTimers[mid] = setInterval(() => { if (timerInterval) { managementSeconds[mid]--; updateMgtTimerDisplay(mid, managementSeconds[mid]); if (managementSeconds[mid] <= 0) { clearInterval(managementTimers[mid]); managementTimers[mid] = null; } } }, 1000); }
     function startIndependentMgtTimer(mid, durSeconds) {
-    managementSeconds[mid] = durSeconds;
-    updateMgtTimerDisplay(mid, managementSeconds[mid]);
+    const startTime = new Date();
+    const targetTime = new Date(startTime.getTime() + durSeconds * 1000);
     managementTimers[mid] = setInterval(() => {
-        managementSeconds[mid]--;
+        const now = new Date();
+        const remaining = Math.round((targetTime - now) / 1000);
+        managementSeconds[mid] = Math.max(0, remaining);
         updateMgtTimerDisplay(mid, managementSeconds[mid]);
-        if (managementSeconds[mid] <= 0) {
+        if (remaining <= 0) {
             clearInterval(managementTimers[mid]);
             delete managementTimers[mid];
         }
     }, 1000);
-} }
-    function handleExcel(e) { processExcelFile(e.target.files[0]); }
-    function processExcelFile(file) {
-        if (!file) return;
-        const reader = new FileReader(); 
-        reader.onload = (ev) => {
-            const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' }), json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+}
             document.getElementById('team-name-display').innerText = json[0] ? json[0][2] : "TEAM"; playersMaster = []; initialMaster = [];
             for(let j=2; j<25; j++) {
                 const r = json[j] || []; let frs = [];
