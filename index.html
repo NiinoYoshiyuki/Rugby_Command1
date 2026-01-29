@@ -104,7 +104,6 @@
         .player-row.selected * { color: white !important; }
         .player-row.fr-match { background-color: var(--fr-highlight); }
         
-        /* 一時退出中(出血/HIA等)は黒文字に戻す（指示通り） */
         .player-row.status-treating { color: #000000 !important; }
         .player-row.status-treating .player-name { color: #000000 !important; }
         
@@ -284,7 +283,8 @@
         <button style="background:#2980b9" onclick="menuAction('負傷交代')">負傷交代</button>
         <button style="background:var(--btn-red)" onclick="menuAction('RC')">RC</button>
         <button style="background:#3498db" onclick="menuAction('出血交代')">出血交代</button>
-        <button style="background:#8e44ad" onclick="menuAction('OFR')">OFR</button> <button style="background:#2c3e50" onclick="menuAction('HIA')">HIA</button>
+        <button style="background:#8e44ad" onclick="menuAction('OFR')">OFR</button>
+        <button style="background:#2c3e50" onclick="menuAction('HIA')">HIA</button>
         <button style="background:#1abc9c" onclick="menuAction('一時退出')">一時退出</button>
         <button style="background:#5D4037" onclick="menuAction('出血HIA')">出血HIA</button>
         <button style="background:#795548" onclick="menuAction('SWAP')">SWAP</button>
@@ -303,8 +303,47 @@
     function init() {
         openMenu();
         setupDragAndDrop();
-        setupMenuDrag();
+        setupFloatingMenuDrag();
         renderLists();
+    }
+
+    function setupFloatingMenuDrag() {
+        const menu = document.getElementById("floating-menu"), handle = document.getElementById("menu-drag-handle");
+        let isDrag = false, ox, oy;
+
+        // Mouse Events
+        handle.onmousedown = (e) => {
+            isDrag = true;
+            ox = e.clientX - menu.offsetLeft;
+            oy = e.clientY - menu.offsetTop;
+            document.onmousemove = (e) => {
+                if(isDrag) {
+                    menu.style.left = (e.clientX - ox) + "px";
+                    menu.style.top = (e.clientY - oy) + "px";
+                    menu.style.transform = "none";
+                }
+            };
+        };
+        document.onmouseup = () => { isDrag = false; document.onmousemove = null; };
+
+        // Touch Events for Tablet
+        handle.ontouchstart = (e) => {
+            isDrag = true;
+            const touch = e.touches[0];
+            ox = touch.clientX - menu.offsetLeft;
+            oy = touch.clientY - menu.offsetTop;
+            e.preventDefault();
+        };
+        handle.ontouchmove = (e) => {
+            if (isDrag) {
+                const touch = e.touches[0];
+                menu.style.left = (touch.clientX - ox) + "px";
+                menu.style.top = (touch.clientY - oy) + "px";
+                menu.style.transform = "none";
+                e.preventDefault();
+            }
+        };
+        handle.ontouchend = () => { isDrag = false; };
     }
 
     function setupDragAndDrop() {
@@ -316,42 +355,9 @@
                 e.preventDefault();
                 zone.classList.remove('drag-over');
                 const file = e.dataTransfer.files[0];
-                if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) { handleExcel({target: {files: [file]}}); }
+                if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) { processExcelFile(file); }
             });
         });
-    }
-
-    function setupMenuDrag() {
-        const menu = document.getElementById("floating-menu"), handle = document.getElementById("menu-drag-handle");
-        let isDrag = false, ox, oy;
-
-        const startDrag = (e) => {
-            isDrag = true;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            ox = clientX - menu.offsetLeft;
-            oy = clientY - menu.offsetTop;
-            if (e.touches) e.preventDefault();
-        };
-
-        const onDrag = (e) => {
-            if (!isDrag) return;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            menu.style.left = (clientX - ox) + "px";
-            menu.style.top = (clientY - oy) + "px";
-            menu.style.transform = "none";
-        };
-
-        const stopDrag = () => { isDrag = false; };
-
-        handle.onmousedown = startDrag;
-        window.onmousemove = onDrag;
-        window.onmouseup = stopDrag;
-
-        handle.ontouchstart = startDrag;
-        window.ontouchmove = onDrag;
-        window.ontouchend = stopDrag;
     }
 
     function openMenu() { document.getElementById('floating-menu').style.display = 'block'; }
@@ -541,47 +547,38 @@
                 const startSec = timeStrToSeconds(startTimeStr), elapsedSec = recordedSeconds - startSec;
                 let initialDuration = (type === 'YC' || type === 'OFR') ? 600 : (type === 'RC' ? 1200 : (type === 'HIA' ? 720 : (type === '出血HIA' ? 1020 : 900)));
                 const remaining = Math.max(0, initialDuration - elapsedSec);
-                managementSeconds[mid] = remaining; updateMgtTimerDisplay(mid, remaining); card.dataset.halfAdjusted = "true";
+                managementSeconds[mid] = remaining;
+                updateMgtTimerDisplay(mid, remaining);
+                card.dataset.halfAdjusted = "true";
             }
         });
-        seconds = 2400; updateTimerDisplay(); if (timerInterval) toggleTimer();
+        seconds = 2400; updateTimerDisplay();
+        if (timerInterval) toggleTimer();
     }
 
-    function timeStrToSeconds(str) { const parts = str.split(':'); return parseInt(parts[0]) * 60 + parseInt(parts[1]); }
+    function timeStrToSeconds(str) { const parts = str.split(':'); return parseInt(parts[0])*60 + parseInt(parts[1]); }
 
     function menuAction(type) {
         if (selectedIds.length === 0) return;
         let p1 = null, p2 = null, actionType = type;
-
         if (selectedIds.length >= 2) {
-            p1 = playersMaster.find(x => x.id === selectedIds[0]) || ejectedPlayers.find(x => x.id === selectedIds[0]); 
+            p1 = playersMaster.find(x => x.id === selectedIds[0]) || ejectedPlayers.find(x => x.id === selectedIds[0]);
             p2 = playersMaster.find(x => x.id === selectedIds[1]) || ejectedPlayers.find(x => x.id === selectedIds[1]);
         } else {
             p1 = playersMaster.find(x => x.id === selectedIds[0]) || ejectedPlayers.find(x => x.id === selectedIds[0]);
             let p1Idx = playersMaster.findIndex(x => x.id === selectedIds[0]);
-            if (p1Idx === -1) {
-                const ep = ejectedPlayers.find(x => x.id === selectedIds[0]);
-                if (ep) p1Idx = ep.originalPos - 1;
-            }
+            if (p1Idx === -1) { const ep = ejectedPlayers.find(x => x.id === selectedIds[0]); if (ep) p1Idx = ep.originalPos - 1; }
             if (!['YC', 'RC', 'OFR', '負傷交代'].includes(type) && p1Idx !== -1 && p1Idx < 15) {
                 if (!confirm(`${type}として予約リストに追加しますか？`)) return;
-                addReservationCard(type + "（退出）", p1, null);
-                clearSelection();
-                return;
+                addReservationCard(type + "（退出）", p1, null); clearSelection(); return;
             }
-            if (type === '負傷交代') {
-                if (!confirm("負傷退場として予約リストに追加しますか？")) return;
-                actionType = '負傷退場';
-            }
+            if (type === '負傷交代') { if (!confirm("負傷退場として予約リストに追加しますか？")) return; actionType = '負傷退場'; }
         }
 
         if (!validateCatLimit(selectedIds[0], selectedIds[1] || '', actionType)) return;
 
         let outIdx = playersMaster.findIndex(p => p.id === (p1 ? p1.id : ''));
-        if (outIdx === -1 && p1) {
-            const ep = ejectedPlayers.find(p => p.id === p1.id);
-            if (ep) outIdx = ep.originalPos - 1;
-        }
+        if (outIdx === -1 && p1) { const ep = ejectedPlayers.find(p => p.id === p1.id); if (ep) outIdx = ep.originalPos - 1; }
 
         if (!['YC', 'RC', 'OFR'].includes(actionType)) {
             if (outIdx !== -1 && outIdx < 3) {
@@ -600,251 +597,201 @@
                 if (!confirm(`フロントロー(ポジション${outIdx+1})が一時退場します。補充がない場合はアンコンテスト・スクラムになりますがよろしいですか？`)) return;
             }
         }
-
-        addReservationCard(actionType, p1, p2);
-        clearSelection();
+        addReservationCard(actionType, p1, p2); clearSelection();
     }
 
-    function formatTimerStr(totalSeconds) {
-        const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0'), s = (totalSeconds % 60).toString().padStart(2, '0');
-        return `${m}:${s}`;
-    }
+    function formatTimerStr(totalSeconds) { const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0'), s = (totalSeconds % 60).toString().padStart(2, '0'); return `${m}:${s}`; }
 
     function addReservationCard(type, outP, inP, mid = null) {
         const resList = document.getElementById('reservation-list'), rid = mid || Date.now();
         const card = document.createElement('div');
-        card.className = 'reserve-card';
-        card.id = `res-${rid}`;
-        card.dataset.outId = outP ? outP.id : '';
-        card.dataset.inId = inP ? inP.id : '';
+        card.className = 'reserve-card'; card.id = `res-${rid}`; card.dataset.outId = outP ? outP.id : ''; card.dataset.inId = inP ? inP.id : '';
+        let displayType = type.replace('交代','').replace('確定',''), outText = outP ? (outP.id === 'empty' ? 'OUT 空白' : `OUT No${outP.no} ${outP.name}`) : 'OUT ---', inText = inP ? (inP.id === 'empty' ? 'IN&nbsp;&nbsp;空白' : `IN&nbsp;&nbsp;No${inP.no} ${inP.name}`) : 'IN&nbsp;&nbsp;空白';
+        
+        let headerColor = "var(--btn-green)";
+        if (['一時交代','SWAP'].includes(displayType)) headerColor = "#000000";
 
-        let displayType = type.replace('交代','').replace('確定',''), 
-            outText = outP ? (outP.id === 'empty' ? 'OUT 空白' : `OUT No${outP.no} ${outP.name}`) : 'OUT ---',
-            inText = inP ? (inP.id === 'empty' ? 'IN&nbsp;&nbsp;空白' : `IN&nbsp;&nbsp;No${inP.no} ${inP.name}`) : 'IN&nbsp;&nbsp;空白';
-
-        card.innerHTML = `<div class="reserve-remaining" id="res-timer-${rid}"></div><div class="reserve-info"><div style="color:var(--btn-green); font-weight:bold;">【${displayType}】 待機中...</div><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${outText}</div><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${inText}</div></div><div class="reserve-btns"><button class="btn-reserve-exe" onclick="handleReserveExe('${type}', '${outP?outP.id:''}', '${inP?inP.id:''}', ${rid})">実行</button><button class="btn-reserve-del" onclick="removeReservationCard(${rid})">削除</button></div>`;
+        card.innerHTML = `<div class="reserve-remaining" id="res-timer-${rid}"></div><div class="reserve-info"><div style="color:${headerColor}; font-weight:bold;">【${displayType}】 待機中...</div><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${outText}</div><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${inText}</div></div><div class="reserve-btns"><button class="btn-reserve-exe" onclick="handleReserveExe('${type}', '${outP?outP.id:''}', '${inP?inP.id:''}', ${rid})">実行</button><button class="btn-reserve-del" onclick="removeReservationCard(${rid})">削除</button></div>`;
         resList.prepend(card);
-
-        if (mid && managementSeconds[mid] !== undefined) {
-            const el = document.getElementById(`res-timer-${rid}`);
-            if (el) el.innerText = formatTimerStr(managementSeconds[rid]);
-        }
-    }
-
-    function removeReservationCard(rid) {
-        if (confirm("この予約を削除してもよろしいですか？")) {
-            if (managementTimers[rid]) { clearInterval(managementTimers[rid]); delete managementTimers[rid]; delete managementSeconds[rid]; }
-            const card = document.getElementById(`res-${rid}`); if(card) card.remove();
-        }
+        if (mid && managementSeconds[mid] !== undefined) { updateResTimerDisplay(rid, managementSeconds[mid]); }
     }
 
     function handleReserveExe(type, outId, inId, rid) {
-        if (type.includes('確定')) {
-            const outP = playersMaster.find(x => x.id === outId) || ejectedPlayers.find(x => x.id === outId);
-            const inP = playersMaster.find(x => x.id === inId) || ejectedPlayers.find(x => x.id === inId);
-            if (outP && outP.id !== 'empty') {
-                if (type.includes('戦術')) outP.status = 'tactical-out';
-                if (type.includes('負傷')) outP.status = 'injured-out';
-                if (type.includes('復帰')) outP.status = 'normal';
-                addLog(type.replace('確定',''), outP, inP);
-            }
-            if (managementTimers[rid]) { clearInterval(managementTimers[rid]); delete managementTimers[rid]; delete managementSeconds[rid]; }
-            renderLists();
-            const card = document.getElementById(`res-${rid}`); if(card) card.remove();
-            checkFRConditions();
-            return;
-        }
+        const outP = playersMaster.find(p => p.id === outId) || ejectedPlayers.find(p => p.id === outId), inP = playersMaster.find(p => p.id === inId);
+        if (!outP && type !== '負傷退場') return alert("対象選手が見つかりません。");
 
-        let outIdx = playersMaster.findIndex(p => p.id === outId);
-        let outP = outIdx !== -1 ? playersMaster[outIdx] : ejectedPlayers.find(p => p.id === outId);
-
-        if (type.includes('（退出）')) {
-            const originType = type.replace('（退出）','');
-            const posNum = outIdx + 1;
-            outP.status = 'status-treating';
-            ejectedPlayers.push({...outP, originalPos: posNum});
-            playersMaster[outIdx] = { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-            addLog(originType + "（退出）", outP, null);
-            createManagementCard(originType, outP, null, rid);
-        } else if (type === '戦術交代' || type === '負傷退場') {
-            const inIdx = playersMaster.findIndex(p => p.id === inId);
-            const inP = inIdx !== -1 ? playersMaster[inIdx] : null;
-            if (outIdx !== -1 && outIdx < 15) {
-                outP.status = (type === '戦術交代') ? 'tactical-out' : 'injured-out';
-                playersMaster[outIdx] = inP ? JSON.parse(JSON.stringify(inP)) : { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-                if (inIdx !== -1) playersMaster[inIdx] = { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-                addLog(type, outP, inP);
-            }
-        } else if (type === 'SWAP') {
-            const inIdx = playersMaster.findIndex(p => p.id === inId);
-            if (outIdx !== -1 && inIdx !== -1) {
-                const tmp = JSON.parse(JSON.stringify(playersMaster[outIdx]));
-                playersMaster[outIdx] = JSON.parse(JSON.stringify(playersMaster[inIdx]));
-                playersMaster[inIdx] = tmp;
-                addLog("SWAP", playersMaster[inIdx], playersMaster[outIdx]);
-            }
-        } else {
-            const inIdx = playersMaster.findIndex(p => p.id === inId);
-            const inP = inIdx !== -1 ? playersMaster[inIdx] : null;
-            const posNum = outIdx + 1;
-            outP.status = 'status-treating';
-            ejectedPlayers.push({...outP, originalPos: posNum});
-            playersMaster[outIdx] = inP ? JSON.parse(JSON.stringify(inP)) : { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-            if (inIdx !== -1) playersMaster[inIdx] = { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
+        if (type === '戦術交代') {
+            updatePlayerStatus(outId, 'tactical-out');
+            if (inId) swapPlayers(outId, inId);
+            addLog("戦術交代", outP, inP);
+        } else if (type === '負傷交代' || type === '負傷退場') {
+            updatePlayerStatus(outId, 'injured-out');
+            if (inId) swapPlayers(outId, inId);
+            addLog("負傷交代", outP, inP);
+        } else if (['YC', 'RC', 'OFR', 'HIA', '出血HIA', '出血交代', '一時退出'].includes(type)) {
+            const mid = Date.now();
+            if (inId) swapPlayers(outId, inId);
+            addManagementCard(type, outP, inP, mid);
             addLog(type, outP, inP);
-            createManagementCard(type, outP, inP, rid);
+        } else if (type === '一時交代' || type === 'SWAP') {
+            if (outId && inId) swapPlayers(outId, inId);
+            addLog(type, outP, inP);
+        } else if (type.endsWith('（退出）')) {
+            const baseType = type.replace('（退出）', '');
+            const mid = Date.now();
+            addManagementCard(baseType, outP, null, mid);
+            addLog(baseType, outP, null);
         }
-
-        const resCard = document.getElementById(`res-${rid}`); if(resCard) resCard.remove();
-        renderLists();
-        checkFRConditions();
+        removeReservationCard(rid); renderLists(); checkFRConditions();
     }
 
-    function createManagementCard(type, outP, inP, mid) {
+    function swapPlayers(outId, inId) {
+        let outIdx = playersMaster.findIndex(p => p.id === outId);
+        if (outIdx === -1) { const ep = ejectedPlayers.find(p => p.id === outId); if (ep) outIdx = ep.originalPos - 1; }
+        const inIdx = playersMaster.findIndex(p => p.id === inId);
+        if (outIdx !== -1 && inIdx !== -1) {
+            const pOut = playersMaster[outIdx], pIn = playersMaster[inIdx];
+            playersMaster[outIdx] = pIn; playersMaster[inIdx] = pOut;
+        }
+    }
+
+    function updatePlayerStatus(id, status) {
+        const p = playersMaster.find(x => x.id === id) || ejectedPlayers.find(x => x.id === id);
+        if (p) p.status = status;
+    }
+
+    function addManagementCard(type, outP, inP, mid) {
         const mgtList = document.getElementById('management-list');
-        const card = document.createElement('div');
-        card.className = 'mgt-card';
-        card.id = `mgt-${mid}`;
-        card.dataset.outId = outP.id;
-        card.dataset.inId = inP ? inP.id : '';
-        card.dataset.originType = type;
+        const card = document.createElement('div'); card.className = 'mgt-card'; card.id = `mgt-${mid}`;
+        card.dataset.outId = outP ? outP.id : ''; card.dataset.inId = inP ? inP.id : ''; card.dataset.originType = type;
         card.dataset.startTimeStr = formatTimerStr(seconds);
 
         let duration = (type === 'YC' || type === 'OFR') ? 600 : (type === 'RC' ? 1200 : (type === 'HIA' ? 720 : (type === '出血HIA' ? 1020 : 900)));
         managementSeconds[mid] = duration;
 
-        card.innerHTML = `<div class="mgt-header"><span class="mgt-type">${type}</span><span class="mgt-timer" id="timer-${mid}">${formatTimerStr(duration)}</span></div><div class="mgt-player-info">OUT: No${outP.no} ${outP.name}${inP ? `<br>IN: No${inP.no} ${inP.name}` : ''}</div><div class="mgt-btns-row"><div class="mgt-status-btns" id="btns-${mid}"></div><div class="mgt-action-btns"><button class="btn-mgt-exe" onclick="confirmMgt(${mid})">確定</button><button class="btn-mgt-del" onclick="removeMgt(${mid})">削除</button></div></div>`;
+        card.innerHTML = `<div class="mgt-header"><span class="mgt-type">${type}</span><span class="mgt-timer" id="mgt-timer-${mid}">${formatTimerStr(duration)}</span></div><div class="mgt-player-info">OUT: No${outP ? outP.no : '?' } ${outP ? outP.name : '不明'}<br>IN: ${inP ? 'No' + inP.no + ' ' + inP.name : '---'}</div><input type="text" class="mgt-reason-input" placeholder="理由・備考入力"><div class="mgt-btns-row"><div class="mgt-status-btns"><button id="btn-yellow-${mid}" onclick="setMgtDecision(${mid}, 'YC')">YC</button><button id="btn-red-${mid}" onclick="setMgtDecision(${mid}, 'RC')">RC</button><button id="btn-normal-${mid}" onclick="setMgtDecision(${mid}, '復帰')">復帰</button><button class="btn-decision-exe" onclick="executeDecision(${mid})">確定</button></div><div class="mgt-action-btns"><button class="btn-mgt-del" onclick="removeManagementCard(${mid})">削除</button></div></div>`;
         mgtList.prepend(card);
+        startManagementTimer(mid);
+        if (outP) { outP.status = 'treating'; renderLists(); }
+    }
 
-        const btnContainer = document.getElementById(`btns-${mid}`);
-        if (['HIA', '出血HIA', '出血交代', '一時退出'].includes(type)) {
-            const b1 = document.createElement('button'); b1.innerText = "戦術交代"; b1.onclick = () => setMgtStatus(mid, '戦術交代', b1);
-            const b2 = document.createElement('button'); b2.innerText = "負傷交代"; b2.onclick = () => setMgtStatus(mid, '負傷交代', b2);
-            const b3 = document.createElement('button'); b3.innerText = "復帰"; b3.onclick = () => setMgtStatus(mid, '復帰', b3);
-            btnContainer.append(b1, b2, b3);
-        } else if (['YC', 'OFR'].includes(type)) {
-            const b1 = document.createElement('button'); b1.innerText = "復帰"; b1.onclick = () => setMgtStatus(mid, '復帰', b1);
-            btnContainer.append(b1);
-        }
-
+    function startManagementTimer(mid) {
         managementTimers[mid] = setInterval(() => {
-            if (timerInterval) {
+            if (managementSeconds[mid] > 0) {
                 managementSeconds[mid]--;
-                if (managementSeconds[mid] <= 0) {
-                    managementSeconds[mid] = 0;
-                    document.getElementById(`timer-${mid}`).style.color = "var(--btn-green)";
-                }
                 updateMgtTimerDisplay(mid, managementSeconds[mid]);
+                const resCard = document.querySelector(`.reserve-card[id^="res-"][id$="${mid}"]`);
+                if (resCard) { const rid = resCard.id.split('-')[1]; updateResTimerDisplay(rid, managementSeconds[mid]); }
             }
         }, 1000);
     }
 
-    function setMgtStatus(mid, status, btn) {
-        const card = document.getElementById(`mgt-${mid}`);
-        card.dataset.selectedStatus = status;
-        const btns = card.querySelectorAll('.mgt-status-btns button');
-        btns.forEach(b => { b.classList.remove('active-yellow', 'active-red', 'active-normal'); });
-        if (status === '復帰') btn.classList.add('active-normal');
-        else if (status === '戦術交代') btn.classList.add('active-yellow');
-        else if (status === '負傷交代') btn.classList.add('active-red');
+    function updateMgtTimerDisplay(mid, sec) { const el = document.getElementById(`mgt-timer-${mid}`); if (el) el.innerText = formatTimerStr(sec); }
+    function updateResTimerDisplay(rid, sec) { const el = document.getElementById(`res-timer-${rid}`); if (el) el.innerText = formatTimerStr(sec); }
+
+    function setMgtDecision(mid, decision) {
+        const card = document.getElementById(`mgt-${mid}`); card.dataset.decision = decision;
+        const btnY = document.getElementById(`btn-yellow-${mid}`), btnR = document.getElementById(`btn-red-${mid}`), btnN = document.getElementById(`btn-normal-${mid}`);
+        [btnY, btnR, btnN].forEach(b => b.classList.remove('active-yellow', 'active-red', 'active-normal'));
+        if (decision === 'YC') btnY.classList.add('active-yellow'); else if (decision === 'RC') btnR.classList.add('active-red'); else if (decision === '復帰') btnN.classList.add('active-normal');
     }
 
-    function updateMgtTimerDisplay(mid, sec) {
-        const el = document.getElementById(`timer-${mid}`);
-        if (el) el.innerText = formatTimerStr(sec);
-        const resEl = document.getElementById(`res-timer-${mid}`);
-        if (resEl) resEl.innerText = formatTimerStr(sec);
-    }
+    function executeDecision(mid) {
+        const card = document.getElementById(`mgt-${mid}`); if (!card) return;
+        const decision = card.dataset.decision, outId = card.dataset.outId, inId = card.dataset.inId, type = card.dataset.originType;
+        if (!decision) return alert("処分（YC/RC/復帰）を選択してください。");
+        const outP = playersMaster.find(p => p.id === outId) || ejectedPlayers.find(p => p.id === outId), inP = playersMaster.find(p => p.id === inId);
 
-    function confirmMgt(mid) {
-        const card = document.getElementById(`mgt-${mid}`);
-        const status = card.dataset.selectedStatus;
-        if (!status) return alert("処理内容を選択してください。");
-        const outId = card.dataset.outId, inId = card.dataset.inId, type = card.dataset.originType;
-        const outP = ejectedPlayers.find(p => p.id === outId);
-        const inP = playersMaster.find(p => p.id === inId);
-
-        if (status === '復帰') {
-            if (!validateCatLimit(outId, inId, '復帰')) return;
-            addReservationCard(type + "確定（復帰）", outP, inP, mid);
+        if (decision === '復帰') {
+            if (outP) outP.status = 'normal';
+            addReservationCard("復帰確定", outP, inP, mid);
         } else {
-            if (!validateCatLimit(outId, inId, status)) return;
-            addReservationCard(type + "確定（" + status + "）", outP, inP, mid);
+            if (outP) {
+                outP.status = (decision === 'YC') ? 'yc-out' : 'rc-out';
+                let outIdx = playersMaster.findIndex(p => p.id === outId);
+                if (outIdx !== -1 && outIdx < 15) {
+                    const p = playersMaster[outIdx]; p.originalPos = outIdx + 1; ejectedPlayers.push(p);
+                    playersMaster[outIdx] = { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
+                }
+            }
+            if (decision === 'YC') addPenaltyLog("YC", outP); else addPenaltyLog("RC", outP);
+            removeManagementCard(mid);
         }
-        card.remove();
+        renderLists(); checkFRConditions();
     }
 
-    function removeMgt(mid) {
-        if (confirm("この管理カードを削除しますか？")) {
-            clearInterval(managementTimers[mid]); delete managementTimers[mid]; delete managementSeconds[mid];
-            document.getElementById(`mgt-${mid}`).remove();
-        }
+    function removeReservationCard(rid) { const el = document.getElementById(`res-${rid}`); if (el) el.remove(); }
+    function removeManagementCard(mid) {
+        if (managementTimers[mid]) clearInterval(managementTimers[mid]);
+        delete managementTimers[mid]; delete managementSeconds[mid];
+        const el = document.getElementById(`mgt-${mid}`); if (el) el.remove();
     }
 
-    function addLog(type, p1, p2, note = "") {
-        const log = document.getElementById('main-log'), time = formatTimerStr(seconds);
-        const div = document.createElement('div'); div.className = 'log-entry';
-        let text = `[${time}] ${type}: `;
+    function addLog(action, p1, p2, note = "") {
+        const log = document.getElementById('main-log'), time = formatTimerStr(seconds), entry = document.createElement('div');
+        entry.className = 'log-entry';
+        let text = `[${time}] ${action}: `;
         if (p1) text += `OUT No${p1.no} ${p1.name} `;
-        if (p2) text += `IN No${p2.no} ${p2.name} `;
+        if (p2) text += ` / IN No${p2.no} ${p2.name}`;
         if (note) text += ` (${note})`;
-        div.innerHTML = `<span>${text}</span><button class="btn-log-del" onclick="this.parentElement.remove()">削除</button>`;
-        log.prepend(div);
+        entry.innerHTML = `<span>${text}</span><button class="btn-log-del" onclick="this.parentElement.remove()">削除</button>`;
+        log.prepend(entry);
+    }
 
-        if (['YC', 'RC', 'OFR'].includes(type)) {
-            const pLog = document.getElementById('penalty-log'), pDiv = document.createElement('div');
-            pDiv.className = 'log-entry ' + (type === 'YC' ? 'yc-bg' : (type === 'RC' ? 'rc-bg' : 'yc-bg'));
-            pDiv.innerHTML = `<span>[${time}] ${type}: No${p1.no} ${p1.name}</span><button class="btn-log-del" onclick="this.parentElement.remove()">削除</button>`;
-            pLog.prepend(pDiv);
-        }
+    function addPenaltyLog(type, p) {
+        const log = document.getElementById('penalty-log'), time = formatTimerStr(seconds), entry = document.createElement('div');
+        entry.className = `log-entry ${type === 'YC' ? 'yc-bg' : 'rc-bg'}`;
+        entry.innerHTML = `<span>[${time}] ${type}: No${p ? p.no : '?'} ${p ? p.name : '不明'}</span><button class="btn-log-del" onclick="this.parentElement.remove()">削除</button>`;
+        log.prepend(entry);
     }
 
     function renderLists() {
-        const field = document.getElementById('field-list'), bench = document.getElementById('bench-list'), ejected = document.getElementById('ejected-list');
-        field.innerHTML = ''; bench.innerHTML = ''; ejected.innerHTML = '';
+        const fList = document.getElementById('field-list'), bList = document.getElementById('bench-list'), eList = document.getElementById('ejected-list');
+        fList.innerHTML = ''; bList.innerHTML = ''; eList.innerHTML = '';
 
         for (let i = 0; i < 23; i++) {
             const p = playersMaster[i] || { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-            const div = createPlayerRow(p, i + 1);
-            if (i < 15) field.appendChild(div); else bench.appendChild(div);
+            const row = createPlayerRow(p, i + 1);
+            if (i < 15) fList.appendChild(row); else bList.appendChild(row);
         }
 
-        ejectedPlayers.forEach(p => {
-            const div = createPlayerRow(p, p.originalPos);
-            ejected.appendChild(div);
-        });
+        ejectedPlayers.forEach(p => { eList.appendChild(createEjectedRow(p)); });
         updateCategoryDisplay();
     }
 
     function createPlayerRow(p, pos) {
-        const div = document.createElement('div');
-        div.className = 'player-row ' + (p.id === 'empty' ? 'empty-row' : '');
-        if (p.status === 'status-treating') div.classList.add('status-treating');
+        const div = document.createElement('div'); div.className = 'player-row';
+        if (p.id === 'empty') div.classList.add('empty-row');
+        if (selectedIds.includes(p.id)) div.classList.add('selected');
+        if (p.status === 'treating') div.classList.add('status-treating');
         if (p.status === 'tactical-out') div.classList.add('status-tactical-out');
         if (p.status === 'injured-out') div.classList.add('status-injured-out');
-        if (selectedIds.includes(p.id)) div.classList.add('selected');
+
+        const typeClass = pos <= 15 ? 'field-circle' : 'bench-circle';
         div.dataset.id = p.id;
-
-        const circleClass = pos <= 15 ? 'field-circle' : 'bench-circle';
-        div.innerHTML = `<div class="pos-circle ${circleClass}">${pos}</div><div class="jersey-no">${p.no ? 'No.' + p.no : ''}</div><div class="player-name">${p.name}</div><div style="font-size:10px; opacity:0.6; text-align:center;">${p.cat}</div><div class="fr-cond">${p.fr}</div>`;
-        
-        if (ejectedPlayers.find(x => x.id === p.id)) {
-            const delBtn = document.createElement('button'); delBtn.className = 'btn-ejected-del'; delBtn.innerText = '削除';
-            delBtn.onclick = (e) => { e.stopPropagation(); if (confirm("退場リストから削除しますか？")) { ejectedPlayers = ejectedPlayers.filter(x => x.id !== p.id); renderLists(); } };
-            div.appendChild(delBtn);
-        } else {
-            div.appendChild(document.createElement('div'));
-        }
-
+        div.innerHTML = `<div class="pos-circle ${typeClass}">${pos}</div><div class="jersey-no">${p.no ? 'No.' + p.no : ''}</div><div class="player-name">${p.name}</div><div style="font-size:10px; opacity:0.6; text-align:center;">${p.cat}</div><div class="fr-cond">${p.fr}</div><div></div>`;
         div.onclick = () => selectPlayer(div);
         return div;
     }
 
+    function createEjectedRow(p) {
+        const div = document.createElement('div'); div.className = 'player-row'; div.dataset.id = p.id;
+        if (selectedIds.includes(p.id)) div.classList.add('selected');
+        div.innerHTML = `<div class="pos-circle red-circle">${p.originalPos}</div><div class="jersey-no">No.${p.no}</div><div class="player-name">${p.name}</div><div style="font-size:10px; opacity:0.6; text-align:center;">${p.cat}</div><div class="fr-cond">${p.fr}</div><button class="btn-ejected-del" onclick="removeEjectedPlayer('${p.id}')">削除</button>`;
+        div.onclick = (e) => { if (e.target.tagName !== 'BUTTON') selectPlayer(div); };
+        return div;
+    }
+
+    function removeEjectedPlayer(id) { ejectedPlayers = ejectedPlayers.filter(p => p.id !== id); renderLists(); }
+
     function checkFRConditions() {
-        let fr1 = playersMaster[0], fr2 = playersMaster[1], fr3 = playersMaster[2];
-        let ok1 = fr1.fr.includes('1'), ok2 = fr2.fr.includes('2'), ok3 = fr3.fr.includes('3');
-        isUncontested = !(ok1 && ok2 && ok3);
-        document.getElementById('uncontested-banner').style.display = isUncontested ? 'block' : 'none';
+        let fr1 = false, fr2 = false, fr3 = false;
+        for (let i = 0; i < 15; i++) {
+            const p = playersMaster[i]; if (!p || p.id === 'empty') continue;
+            if (p.fr.includes('1')) fr1 = true; if (p.fr.includes('2')) fr2 = true; if (p.fr.includes('3')) fr3 = true;
+        }
+        const banner = document.getElementById('uncontested-banner');
+        banner.style.display = (fr1 && fr2 && fr3) ? 'none' : 'block';
     }
 
     function toggleTimer() {
@@ -858,21 +805,12 @@
         }
     }
 
-    function updateTimerDisplay() {
-        document.getElementById('timer-display').innerText = formatTimerStr(seconds);
-    }
-
-    function resetTimer() {
-        if (confirm("タイマーをリセットしますか？")) {
-            seconds = 0; updateTimerDisplay();
-            if (timerInterval) toggleTimer();
-        }
-    }
+    function resetTimer() { if (confirm("タイマーをリセットしますか？")) { seconds = 0; updateTimerDisplay(); if (timerInterval) toggleTimer(); } }
+    function updateTimerDisplay() { document.getElementById('timer-display').innerText = formatTimerStr(seconds); }
 
     function toggleTimerEdit() {
         const popup = document.getElementById('timer-edit-popup');
-        if (popup.style.display === 'block') { popup.style.display = 'none'; }
-        else {
+        if (popup.style.display === 'block') { popup.style.display = 'none'; } else {
             document.getElementById('edit-min').innerText = Math.floor(seconds / 60).toString().padStart(2, '0');
             document.getElementById('edit-sec').innerText = (seconds % 60).toString().padStart(2, '0');
             popup.style.display = 'block';
@@ -886,26 +824,24 @@
         updateTimerDisplay();
     }
 
-    function handleExcel(e) {
-        const file = e.target.files[0]; if (!file) return;
+    function handleExcel(event) {
+        const file = event.target.files[0];
+        if (file) processExcelFile(file);
+    }
+
+    function processExcelFile(file) {
         const reader = new FileReader();
-        reader.onload = (evt) => {
-            const data = new Uint8Array(evt.target.result);
-            const wb = XLSX.read(data, { type: 'array' });
-            const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
-            document.getElementById('team-name-display').innerText = json[0] ? json[0][2] : "TEAM";
-            playersMaster = []; initialMaster = [];
+        reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result), wb = XLSX.read(data, { type: 'array' }), json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+            document.getElementById('team-name-display').innerText = json[0] ? json[0][2] : "TEAM"; playersMaster = []; initialMaster = [];
             for (let j = 2; j < 25; j++) {
                 const r = json[j] || []; let frs = [];
-                if (r[3] === true || r[3] === "TRUE") frs.push(1);
-                if (r[4] === true || r[4] === "TRUE") frs.push(2);
-                if (r[5] === true || r[5] === "TRUE") frs.push(3);
-                const pObj = { id: 'p' + Math.random().toString(36).substr(2, 9), no: r[0] || '', name: r[1] || '-----', cat: r[2] || '', fr: frs.length ? frs.join(' ') : '', status: 'normal' };
+                if (r[3] === "TRUE" || r[3] === true) frs.push(1); if (r[4] === "TRUE" || r[4] === true) frs.push(2); if (r[5] === "TRUE" || r[5] === true) frs.push(3);
+                const pObj = { id: 'p' + Math.random().toString(36).substr(2, 9), no: r[0] || '', name: r[1] || '-----', cat: r[2] || '', fr: frs.length ? `${frs.join(' ')}` : '', status: 'normal' };
                 playersMaster.push(pObj); initialMaster.push(JSON.parse(JSON.stringify(pObj)));
             }
             renderLists(); checkFRConditions();
-        };
-        reader.readAsArrayBuffer(file);
+        }; reader.readAsArrayBuffer(file);
     }
 </script>
 </body>
