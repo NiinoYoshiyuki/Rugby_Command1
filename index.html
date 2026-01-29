@@ -19,6 +19,7 @@
             margin: 0; font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
             background-color: var(--bg-dark); color: #ffffff;
             overflow: hidden; display: flex; flex-direction: column; height: 100vh;
+            touch-action: manipulation;
         }
 
         header {
@@ -57,6 +58,7 @@
         .panel-header.yellow { background-color: var(--accent-yellow); color: black; }
 
         .list-container { background: white; color: black; border: 1px solid #ccc; overflow-y: auto; box-sizing: border-box; }
+        .list-container.drag-over { background-color: #e3f2fd !important; border: 3px dashed var(--btn-blue) !important; }
         #field-list { height: 550px; }
         #bench-list { height: 295px; }
 
@@ -70,6 +72,7 @@
         .pos-circle { width: 20px; height: 20px; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; }
         .field-circle { background-color: var(--circle-green); }
         .bench-circle { background-color: var(--circle-blue); }
+        .red-circle { background-color: var(--circle-red); }
         .player-name { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
         /* Floating Menu */
@@ -88,14 +91,10 @@
         .menu-grid button { padding: 12px 5px; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 12px; }
         #open-menu-btn { position: fixed; bottom: 20px; right: 20px; padding: 15px 35px; background: var(--accent-yellow); color: black; font-weight: 900; border-radius: 40px; border: none; cursor: pointer; z-index: 1000; }
 
-        /* Log/Mgt/Reserve Cards */
         .log-entry { font-size: 12px; padding: 8px; border-bottom: 1px solid #ddd; color: black; }
-        .reserve-card { margin: 5px; padding: 8px; border: 2px solid var(--btn-green); border-radius: 8px; background: white; position: relative; color: black; }
+        .reserve-card { margin: 5px; padding: 8px; border: 2px solid var(--btn-green); border-radius: 8px; background: white; color: black; }
         .mgt-card { margin: 5px; padding: 10px; border: 2px solid var(--btn-orange); border-radius: 10px; background: white; color: black; }
         .mgt-timer { font-size: 24px; color: var(--btn-red); font-family: monospace; font-weight: bold; }
-
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; }
-        .modal-content { background: white; padding: 15px; border-radius: 12px; width: 310px; color: black; max-height: 90vh; overflow-y: auto; }
     </style>
 </head>
 <body onload="init()">
@@ -118,7 +117,7 @@
 <main>
     <div class="column">
         <div class="panel-header green">FIELD (1-15)</div>
-        <div id="field-list" class="list-container"></div>
+        <div id="field-list" class="list-container" onclick="triggerExcelLoad()"></div>
         <div class="panel-header yellow">SETTING</div>
         <div class="list-container" style="padding:10px;">
             <input type="file" id="excel-input" style="display:none" onchange="handleExcel(event)">
@@ -128,7 +127,7 @@
     </div>
     <div class="column">
         <div class="panel-header blue">BENCH (16-23)</div>
-        <div id="bench-list" class="list-container"></div>
+        <div id="bench-list" class="list-container" onclick="triggerExcelLoad()"></div>
         <div class="panel-header yellow">PENALTY LOG</div>
         <div id="penalty-log" class="list-container" style="flex-grow:1;"></div>
     </div>
@@ -144,7 +143,7 @@
 </main>
 
 <div id="floating-menu">
-    <div id="menu-drag-handle">COMMAND CENTER (スライド移動)</div>
+    <div id="menu-drag-handle">COMMAND CENTER</div>
     <div class="menu-grid">
         <button style="background:var(--btn-blue)" onclick="menuAction('戦術交代')">戦術交代</button>
         <button style="background:var(--accent-yellow); color:black" onclick="menuAction('YC')">YC</button>
@@ -159,16 +158,19 @@
         <button style="background:#555; grid-column: span 2;" onclick="closeMenu()">CLOSE</button>
     </div>
 </div>
-
 <button id="open-menu-btn" onclick="openMenu()">COMMAND MENU</button>
 
 <script>
-    let seconds = 0, timerInterval = null, selectedIds = [], playersMaster = [], managementTimers = {}, managementSeconds = {};
+    let seconds = 0, timerInterval = null, selectedIds = [], playersMaster = [], initialMaster = [], ejectedPlayers = [], managementTimers = {}, managementSeconds = {};
     let categoryLimit = 4;
 
     function init() {
         openMenu();
         initDraggable();
+        setupDragAndDrop();
+        if(playersMaster.length === 0) {
+            playersMaster = Array.from({length:23}, (_,i)=>({id:'init'+i, no:'', name:'-----', cat:'', fr:'', status:'normal'}));
+        }
         renderLists();
     }
 
@@ -176,157 +178,118 @@
     function initDraggable() {
         const menu = document.getElementById("floating-menu");
         const handle = document.getElementById("menu-drag-handle");
-        let isDragging = false;
-        let startX, startY, initialLeft, initialTop;
-
+        let isDragging = false, startX, startY, initialLeft, initialTop;
         const onStart = (e) => {
             isDragging = true;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            
-            startX = clientX;
-            startY = clientY;
-            
-            const rect = menu.getBoundingClientRect();
-            initialLeft = rect.left;
-            initialTop = rect.top;
-
-            // translateの影響を排除するため、現在の位置を固定
-            menu.style.transform = "none";
-            menu.style.left = initialLeft + "px";
-            menu.style.top = initialTop + "px";
+            const c = e.touches ? e.touches[0] : e;
+            startX = c.clientX; startY = c.clientY;
+            const r = menu.getBoundingClientRect();
+            initialLeft = r.left; initialTop = r.top;
+            menu.style.transform = "none"; menu.style.left = initialLeft + "px"; menu.style.top = initialTop + "px";
         };
-
         const onMove = (e) => {
             if (!isDragging) return;
-            e.preventDefault();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-            const dx = clientX - startX;
-            const dy = clientY - startY;
-
-            menu.style.left = (initialLeft + dx) + "px";
-            menu.style.top = (initialTop + dy) + "px";
+            const c = e.touches ? e.touches[0] : e;
+            menu.style.left = (initialLeft + (c.clientX - startX)) + "px";
+            menu.style.top = (initialTop + (c.clientY - startY)) + "px";
         };
-
-        const onEnd = () => { isDragging = false; };
-
-        handle.addEventListener("mousedown", onStart);
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onEnd);
-
-        handle.addEventListener("touchstart", onStart, {passive: false});
-        document.addEventListener("touchmove", onMove, {passive: false});
-        document.addEventListener("touchend", onEnd);
+        handle.addEventListener("mousedown", onStart); document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", () => isDragging = false);
+        handle.addEventListener("touchstart", onStart, {passive:false}); document.addEventListener("touchmove", onMove, {passive:false}); document.addEventListener("touchend", () => isDragging = false);
     }
 
-    function openMenu() { document.getElementById('floating-menu').style.display = 'block'; }
-    function closeMenu() { document.getElementById('floating-menu').style.display = 'none'; }
+    // --- 予約実行（ここを修正：YC明けの動作を保証） ---
+    function handleReserveExe(type, outId, inId, rid) {
+        // 選手を全リスト（マスター＋退場中）から検索
+        const findP = (id) => playersMaster.find(x => x.id === id) || ejectedPlayers.find(x => x.id === id);
+        const outP = findP(outId);
+        const inP = findP(inId);
 
-    // --- ロジック部分 (指示通り) ---
+        if (!outP) return;
+
+        if (type.includes('（退出）')) {
+            const originType = type.replace('（退出）','');
+            if(['出血交代','HIA','出血HIA'].includes(originType)) outP.status = 'status-treating';
+            const posIdx = playersMaster.findIndex(p => p.id === outId);
+            if (posIdx !== -1) {
+                ejectedPlayers.push({...outP, originalPos: posIdx + 1});
+                playersMaster[posIdx] = { id: 'empty'+rid, no: '', name: '-----', cat: '', fr: '', status: 'normal' };
+                createMgtCard(originType, outP, null, posIdx + 1, rid);
+            }
+        } else if (['YC','RC','OFR'].includes(type)) {
+            const posIdx = playersMaster.findIndex(p => p.id === outId);
+            if (posIdx !== -1) {
+                ejectedPlayers.push({...outP, originalPos: posIdx + 1});
+                playersMaster[posIdx] = { id: 'empty'+rid, no: '', name: '-----', cat: '', fr: '', status: 'normal' };
+                createMgtCard(type, outP, null, posIdx + 1, rid);
+                if(type !== 'RC') addPenaltyLog(type, outP);
+            }
+        } else {
+            // 交代（復帰を含む）の処理
+            let idxOut = playersMaster.findIndex(p => p.id === outId);
+            let idxIn = playersMaster.findIndex(p => p.id === inId);
+
+            // もしOUT対象が「退場リスト」にいる場合（YC明けなど）
+            if (idxOut === -1 && ejectedPlayers.some(p => p.id === outId)) {
+                const ep = ejectedPlayers.find(p => p.id === outId);
+                idxOut = ep.originalPos - 1;
+            }
+
+            if (idxOut !== -1 && inP) {
+                if (type === '戦術交代') outP.status = 'status-tactical-out';
+                else if (type === '負傷交代') outP.status = 'status-injured-out';
+                else outP.status = 'normal'; // 一時交代(出血等)/SWAP/YC復帰
+
+                playersMaster[idxOut] = inP;
+                if (idxIn !== -1) playersMaster[idxIn] = outP;
+                if (idxOut < 15) playersMaster[idxOut].status = 'normal';
+                
+                // YC復帰などの場合、退場リストから削除
+                ejectedPlayers = ejectedPlayers.filter(p => p.id !== inP.id);
+
+                if (['出血交代','HIA','出血HIA','一時退出','SWAP'].includes(type) && !type.includes('復帰')) {
+                    createMgtCard(type, outP, inP, idxOut + 1, rid);
+                }
+            }
+        }
+        addLog(type, outP, inP);
+        const card = document.getElementById(`res-${rid}`); if(card) card.remove();
+        renderLists(); checkFRConditions();
+    }
+
+    // --- ロジック ---
     function menuAction(type) {
         if (selectedIds.length === 0) return;
-        const p1 = playersMaster.find(x => x.id === selectedIds[0]);
-        const p2 = selectedIds.length > 1 ? playersMaster.find(x => x.id === selectedIds[1]) : null;
-        
-        if (selectedIds.length === 1 && !['YC','RC','OFR','負傷交代'].includes(type)) {
-            addReservationCard(type + "（退出）", p1, null);
-        } else {
-            addReservationCard(type, p1, p2);
-        }
+        const p1 = playersMaster.find(x => x.id === selectedIds[0]) || ejectedPlayers.find(x => x.id === selectedIds[0]);
+        const p2 = selectedIds.length > 1 ? (playersMaster.find(x => x.id === selectedIds[1]) || ejectedPlayers.find(x => x.id === selectedIds[1])) : null;
+        if (selectedIds.length === 1 && !['YC','RC','OFR','負傷交代'].includes(type)) addReservationCard(type + "（退出）", p1, null);
+        else addReservationCard(type, p1, p2);
         clearSelection();
     }
 
     function addReservationCard(type, outP, inP) {
         const resList = document.getElementById('reservation-list'), rid = Date.now();
         const card = document.createElement('div'); card.className = 'reserve-card'; card.id = `res-${rid}`;
-        let outName = outP ? `OUT: No${outP.no} ${outP.name}` : 'OUT: ---';
-        let inName = inP ? `IN: No${inP.no} ${inP.name}` : 'IN: 空白';
-        
-        card.innerHTML = `
-            <div style="font-weight:bold; color:var(--btn-green);">【${type}】</div>
-            <div style="font-size:11px;">${outName}<br>${inName}</div>
-            <button onclick="handleReserveExe('${type}', '${outP?outP.id:''}', '${inP?inP.id:''}', ${rid})" style="margin-top:5px; width:100%; background:var(--btn-green); color:white; border:none; border-radius:3px; cursor:pointer;">実行</button>
-        `;
+        card.innerHTML = `<div style="font-weight:bold; color:var(--btn-green);">【${type}】</div><div style="font-size:11px;">OUT: No${outP?.no||''} ${outP?.name||''}<br>IN: No${inP?.no||''} ${inP?.name||''}</div><button onclick="handleReserveExe('${type}', '${outP?outP.id:''}', '${inP?inP.id:''}', ${rid})" style="margin-top:5px; width:100%; background:var(--btn-green); color:white; border:none; border-radius:3px; padding:8px; cursor:pointer;">実行</button>`;
         resList.prepend(card);
     }
 
-    function handleReserveExe(type, outId, inId, rid) {
-        const outP = playersMaster.find(x => x.id === outId);
-        const inP = playersMaster.find(x => x.id === inId);
-
-        if (type.includes('（退出）')) {
-            const originType = type.replace('（退出）','');
-            // 出血・HIA等の退出中は赤文字
-            if(['出血交代','HIA','出血HIA'].includes(originType)) outP.status = 'status-treating';
-            const posIdx = playersMaster.findIndex(p => p.id === outId);
-            playersMaster[posIdx] = { id: 'empty'+rid, no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-            createMgtCard(originType, outP, null, posIdx + 1, rid);
-        } else if (['YC','RC','OFR'].includes(type)) {
-            const posIdx = playersMaster.findIndex(p => p.id === outId);
-            playersMaster[posIdx] = { id: 'empty'+rid, no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-            createMgtCard(type, outP, null, posIdx + 1, rid);
-            if(type !== 'RC') addPenaltyLog(type, outP); // PENALTYLOGには戦術・負傷・RCなどは記録しない方針
-        } else {
-            // 通常の交代(戦術・負傷)・一時交代・SWAP
-            const idx1 = playersMaster.findIndex(p => p.id === outId);
-            const idx2 = playersMaster.findIndex(p => p.id === inId);
-            if (idx1 !== -1 && idx2 !== -1) {
-                if (type === '戦術交代') outP.status = 'status-tactical-out';
-                else if (type === '負傷交代') outP.status = 'status-injured-out';
-                // 一時交代(出血等)やSWAPのOUT/INは黒文字(normal)
-                else outP.status = 'normal';
-                
-                playersMaster[idx1] = inP;
-                playersMaster[idx2] = outP;
-                if(idx1 < 15) playersMaster[idx1].status = 'normal';
-                
-                if (['出血交代','HIA','出血HIA','一時退出','SWAP'].includes(type)) {
-                    createMgtCard(type, outP, inP, idx1 + 1, rid);
-                }
-            }
-        }
-        addLog(type, outP, inP);
-        document.getElementById(`res-${rid}`).remove();
-        renderLists();
-        checkFRConditions();
-    }
-
     function createMgtCard(type, outP, inP, pos, mid) {
-        const mList = document.getElementById('management-list');
-        const card = document.createElement('div'); card.className = 'mgt-card'; card.id = `mgt-${mid}`;
+        const mList = document.getElementById('management-list'), card = document.createElement('div'); card.className = 'mgt-card'; card.id = `mgt-${mid}`;
         let dur = (['YC','OFR'].includes(type)) ? 600 : (type === 'HIA' ? 720 : (type === '出血HIA' ? 1020 : 900));
         managementSeconds[mid] = dur;
-        card.innerHTML = `
-            <div style="display:flex; justify-content:space-between;">
-                <span style="font-weight:bold; color:var(--btn-orange);">【${type}】</span>
-                <span class="mgt-timer" id="timer-${mid}">${formatTimer(dur)}</span>
-            </div>
-            <div style="font-size:12px; margin:5px 0;">No.${outP.no} ${outP.name}</div>
-            <button onclick="executeReturn(${mid}, '${outP.id}', '${inP?inP.id:''}', '${type}')" style="width:100%; background:var(--btn-blue); color:white; border:none; border-radius:3px; padding:5px;">復帰予約</button>
-        `;
+        card.innerHTML = `<div style="display:flex; justify-content:space-between;"><span style="font-weight:bold; color:var(--btn-orange);">【${type}】</span><span class="mgt-timer" id="timer-${mid}">${formatTimer(dur)}</span></div><div style="font-size:12px; margin:5px 0;">No.${outP.no} ${outP.name}</div><button onclick="executeReturn(${mid}, '${outP.id}', '${inP?inP.id:''}', '${type}')" style="width:100%; background:var(--btn-blue); color:white; border:none; border-radius:3px; padding:8px; cursor:pointer;">復帰予約</button>`;
         mList.prepend(card);
         startMgtTimer(mid, ['出血交代','HIA','出血HIA','一時退出','SWAP'].includes(type));
     }
 
     function executeReturn(mid, outId, inId, type) {
-        const outP = playersMaster.find(x => x.id === outId) || {no:'?', name:'?'};
-        const inP = playersMaster.find(x => x.id === inId);
-        addReservationCard(type + "（復帰）", inP, outP);
-        document.getElementById(`mgt-${mid}`).remove();
-        clearInterval(managementTimers[mid]);
+        const outP = playersMaster.find(x => x.id === outId) || ejectedPlayers.find(x => x.id === outId);
+        addReservationCard(type + "（復帰）", null, outP); // INとして戻る
+        document.getElementById(`mgt-${mid}`).remove(); clearInterval(managementTimers[mid]);
     }
 
-    function startMgtTimer(mid, independent) {
-        managementTimers[mid] = setInterval(() => {
-            if (independent || timerInterval) {
-                managementSeconds[mid]--;
-                const el = document.getElementById(`timer-${mid}`);
-                if (el) el.innerText = formatTimer(managementSeconds[mid]);
-                if (managementSeconds[mid] <= 0) clearInterval(managementTimers[mid]);
-            }
-        }, 1000);
+    function startMgtTimer(mid, ind) {
+        managementTimers[mid] = setInterval(() => { if (ind || timerInterval) { managementSeconds[mid]--; const el = document.getElementById(`timer-${mid}`); if (el) el.innerText = formatTimer(managementSeconds[mid]); if (managementSeconds[mid] <= 0) clearInterval(managementTimers[mid]); } }, 1000);
     }
 
     function renderLists() {
@@ -334,76 +297,55 @@
         f.innerHTML = ''; b.innerHTML = '';
         playersMaster.slice(0, 15).forEach((p, i) => f.innerHTML += createRow(i + 1, p, 'field'));
         playersMaster.slice(15, 23).forEach((p, i) => b.innerHTML += createRow(i + 16, p, 'bench'));
+        updateCategoryDisplay();
     }
 
     function createRow(pos, p, type) {
-        const statusClass = p.status || 'normal';
-        return `<div class="player-row ${statusClass}" onclick="selectPlayer('${p.id}', this)">
+        const s = p.status || 'normal';
+        return `<div class="player-row ${s}" onclick="selectPlayer('${p.id}', this)">
             <div class="pos-circle ${type==='field'?'field-circle':'bench-circle'}">${pos}</div>
-            <div>${p.no?'No.'+p.no:''}</div>
-            <div class="player-name">${p.name}</div>
+            <div>${p.no?'No.'+p.no:''}</div><div class="player-name">${p.name}</div>
             <div>${p.cat}</div><div style="font-size:10px; color:var(--btn-orange);">${p.fr}</div><div></div>
         </div>`;
     }
 
-    function selectPlayer(id, el) {
-        if (id.startsWith('empty')) return;
-        const idx = selectedIds.indexOf(id);
-        if (idx > -1) { selectedIds.splice(idx,1); el.classList.remove('selected'); }
-        else { selectedIds.push(id); el.classList.add('selected'); }
-    }
-
+    function selectPlayer(id, el) { if(id.startsWith('init'))return; const idx = selectedIds.indexOf(id); if (idx > -1) { selectedIds.splice(idx,1); el.classList.remove('selected'); } else { selectedIds.push(id); el.classList.add('selected'); } }
     function clearSelection() { selectedIds = []; document.querySelectorAll('.player-row').forEach(r => r.classList.remove('selected')); }
-
-    function toggleTimer() {
-        const btn = document.getElementById('start-btn');
-        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; btn.innerText = "START"; btn.className = "btn-start-style"; }
-        else { timerInterval = setInterval(() => { seconds++; updateTimerDisplay(); }, 1000); btn.innerText = "STOP"; btn.className = "btn-stop-style"; }
-    }
+    function openMenu() { document.getElementById('floating-menu').style.display = 'block'; }
+    function closeMenu() { document.getElementById('floating-menu').style.display = 'none'; }
+    function toggleTimer() { const btn = document.getElementById('start-btn'); if (timerInterval) { clearInterval(timerInterval); timerInterval = null; btn.innerText = "START"; btn.className = "btn-start-style"; } else { timerInterval = setInterval(() => { seconds++; updateTimerDisplay(); }, 1000); btn.innerText = "STOP"; btn.className = "btn-stop-style"; } }
     function updateTimerDisplay() { document.getElementById('timer-display').innerText = formatTimer(seconds); }
     function formatTimer(s) { const m = Math.floor(s/60).toString().padStart(2,'0'), sec = (s%60).toString().padStart(2,'0'); return `${m}:${sec}`; }
     function resetTimer() { if(confirm("リセット？")) { seconds = 0; updateTimerDisplay(); } }
-
-    function addLog(type, outP, inP) {
-        const div = document.createElement('div'); div.className = 'log-entry';
-        div.innerHTML = `<b>[${formatTimer(seconds)}] ${type}</b><br>${outP?`OUT: No${outP.no}`:''} ${inP?`IN: No${inP.no}`:''}`;
-        document.getElementById('main-log').prepend(div);
+    function addLog(type, outP, inP) { const div = document.createElement('div'); div.className = 'log-entry'; div.innerHTML = `<b>[${formatTimer(seconds)}] ${type}</b><br>${outP?`OUT: No${outP.no}`:''} ${inP?`IN: No${inP.no}`:''}`; document.getElementById('main-log').prepend(div); }
+    function addPenaltyLog(type, p) { const div = document.createElement('div'); div.className = 'log-entry'; div.style.backgroundColor = type==='RC'?'#ffcdd2':'#fff176'; div.innerHTML = `<b>[${formatTimer(seconds)}] ${type}</b> No.${p.no} ${p.name}`; document.getElementById('penalty-log').prepend(div); }
+    function checkFRConditions() { const p1 = playersMaster[0], p2 = playersMaster[1], p3 = playersMaster[2]; const ok = p1?.fr.includes('1') && p2?.fr.includes('2') && p3?.fr.includes('3'); document.getElementById('uncontested-banner').style.display = ok ? 'none' : 'block'; }
+    function updateCategoryDisplay() { let c = 0; for(let i=0; i<15; i++){ if(['A2','B','C'].includes(playersMaster[i].cat.toUpperCase())) c++; } document.getElementById('category-display').innerText = `Category: ${c}/${categoryLimit}`; }
+    function triggerExcelLoad() { if (!playersMaster.some(p => p.name !== '-----')) document.getElementById('excel-input').click(); }
+    function setupDragAndDrop() {
+        [document.getElementById('field-list'), document.getElementById('bench-list')].forEach(zone => {
+            zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+            zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+            zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('drag-over'); if(e.dataTransfer.files.length) processExcelFile(e.dataTransfer.files[0]); });
+        });
     }
-    function addPenaltyLog(type, p) {
-        const div = document.createElement('div'); div.className = 'log-entry';
-        div.style.backgroundColor = type==='RC'?'#ffcdd2':'#fff176';
-        div.innerHTML = `<b>[${formatTimer(seconds)}] ${type}</b> No.${p.no} ${p.name}`;
-        document.getElementById('penalty-log').prepend(div);
-    }
-
-    function checkFRConditions() {
-        const p1 = playersMaster[0], p2 = playersMaster[1], p3 = playersMaster[2];
-        const ok = p1?.fr.includes('1') && p2?.fr.includes('2') && p3?.fr.includes('3');
-        document.getElementById('uncontested-banner').style.display = ok ? 'none' : 'block';
-    }
-
-    function handleExcel(e) {
-        const file = e.target.files[0];
+    function handleExcel(e) { if(e.target.files.length) processExcelFile(e.target.files[0]); }
+    function processExcelFile(file) {
         const reader = new FileReader();
         reader.onload = (ev) => {
-            const data = new Uint8Array(ev.target.result);
-            const wb = XLSX.read(data, {type: 'array'});
-            const sheet = wb.Sheets[wb.SheetNames[0]];
-            const json = XLSX.utils.sheet_to_json(sheet, {header: 1});
+            const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+            const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
             document.getElementById('team-name-display').innerText = json[0] ? json[0][2] : "TEAM";
-            playersMaster = [];
-            for (let i = 2; i < 25; i++) {
-                const r = json[i] || [];
-                let fr = []; if(r[3]) fr.push(1); if(r[4]) fr.push(2); if(r[5]) fr.push(3);
-                playersMaster.push({ id: 'p'+i, no: r[0]||'', name: r[1]||'-----', cat: r[2]||'', fr: fr.join(' '), status: 'normal' });
+            playersMaster = []; initialMaster = [];
+            for(let j=2; j<25; j++) {
+                const r = json[j] || []; let frs = [];
+                if(r[3] === "TRUE" || r[3] === true) frs.push(1); if(r[4] === "TRUE" || r[4] === true) frs.push(2); if(r[5] === "TRUE" || r[5] === true) frs.push(3);
+                const pObj = { id:'p'+Math.random().toString(36).substr(2,9), no:r[0]||'', name:r[1]||'-----', cat:r[2]||'', fr:frs.length ? `${frs.join(' ')}` : '', status:'normal' };
+                playersMaster.push(pObj); initialMaster.push(JSON.parse(JSON.stringify(pObj)));
             }
             renderLists(); checkFRConditions();
-        };
-        reader.readAsArrayBuffer(file);
+        }; reader.readAsArrayBuffer(file);
     }
-
-    // 初期化用
-    playersMaster = Array.from({length:23}, (_,i)=>({id:'init'+i, no:'', name:'-----', cat:'', fr:'', status:'normal'}));
 </script>
 </body>
 </html>
