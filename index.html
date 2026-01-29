@@ -2,866 +2,487 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Rugby Command Center</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rugby Sub Manager - Fixed Layout</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
-            --bg-dark: #1e2a38;
-            --header-bg: #1a252f;
-            --accent-yellow: #f1c40f;
-            --btn-green: #2ecc71;
-            --btn-blue: #3498db;
-            --btn-red: #e74c3c;
-            --btn-orange: #e67e22;
-            --btn-gray: #95a5a6;
-            --circle-green: #2ecc71;
-            --circle-blue: #3498db;
-            --circle-red: #ff0000;
-            --selected-orange: #f39c12;
-            --tactical-blue: #2980b9;
-            --injured-gray: #bdc3c7;
-            --light-red: #ffcdd2;
-            --fr-highlight: #e3f2fd;
-            --treating-red: #ff0000;
+            --bg-body: #f4f7f6;
+            --field-green: #27ae60;
+            --bench-orange: #e67e22;
+            --text-black: #000000;
+            --text-medical: #ff0000;
+            --text-tactical: #0000ff;
+            --bg-injury: #d3d3d3;
+            --bg-reserved: #fff9c4;
+            --bg-yc: #ffff00;
+            --bg-ofr: #ffcc80;
+            --bg-rc: #e74c3c;
+            --border: #bdc3c7;
         }
 
-        body {
-            margin: 0; font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
-            background-color: var(--bg-dark); color: #ffffff;
-            overflow: hidden; display: flex; flex-direction: column; height: 100vh;
-        }
+        body { font-family: -apple-system, sans-serif; background: var(--bg-body); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; user-select: none; }
+        header { background: #2c3e50; color: white; padding: 4px 15px; flex-shrink: 0; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; height: 35px; }
+        .stopwatch-container { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.1); padding: 2px 10px; border-radius: 20px; }
+        #timer-display { font-family: monospace; font-size: 1.4rem; font-weight: bold; min-width: 80px; text-align: center; color: #00ff00; }
+        .sw-btn { padding: 2px 8px; font-size: 0.7rem; border-radius: 4px; border: none; cursor: pointer; font-weight: bold; }
+        .btn-start { background: #27ae60; color: white; }
+        .btn-pause { background: #f1c40f; color: black; }
+        .btn-reset { background: #e74c3c; color: white; }
+        .stats-bar { display: flex; gap: 15px; font-size: 0.8rem; background: rgba(0,0,0,0.2); padding: 2px 10px; border-radius: 4px; margin-bottom: 4px; }
 
-        header {
-            background-color: var(--header-bg); padding: 8px 15px;
-            display: flex; align-items: center; justify-content: space-between;
-            border-bottom: 2px solid #333; height: 65px; box-sizing: border-box;
-            position: relative;
-        }
+        /* レイアウト幅の固定設定 */
+        main { display: flex; gap: 8px; padding: 8px; flex-grow: 1; overflow: hidden; }
+        .col-field { width: 250px; flex-shrink: 0; }
+        .col-bench { width: 250px; flex-shrink: 0; }
+        .col-res-admin { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+        .col-log { flex-grow: 1; min-width: 150px; }
 
-        #uncontested-banner {
-            display: none;
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            background-color: #ff0000;
-            color: white;
-            text-align: center;
-            font-weight: bold;
-            padding: 5px 15px;
-            font-size: 14px;
-            border-radius: 4px;
-            white-space: nowrap;
-            z-index: 10;
-        }
+        .column { background: white; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; height: 100%; }
+        h2 { font-size: 0.8rem; margin: 0; padding: 6px; background: #f8f9fa; border-bottom: 1px solid #eee; text-align: center; font-weight: bold; }
+        .scroll-area { flex-grow: 1; overflow-y: auto; padding: 6px; }
 
-        .header-left { display: flex; align-items: center; gap: 20px; }
-        #team-name-display { font-size: 22px; font-weight: 900; color: var(--accent-yellow); border-left: 5px solid var(--accent-yellow); padding-left: 15px; }
-        #category-display { font-size: 18px; font-weight: bold; color: white; background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 4px; }
+        .player-card { height: 40px; margin-bottom: 4px; border: 1px solid #ddd; border-radius: 6px; display: flex; align-items: center; background: #fff; position: relative; }
+        .is-reserved { background-color: var(--bg-reserved) !important; border-color: #fbc02d !important; }
+        .pos-label { width: 28px; height: 100%; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold; border-right: 1px solid #ddd; border-radius: 6px 0 0 6px; }
+        .player-info { flex-grow: 1; padding-left: 6px; display: flex; align-items: center; font-weight: bold; overflow: hidden; color: var(--text-black); gap: 6px; }
+        .jersey-no { font-size: 0.9rem; min-width: 20px; }
+        .player-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; font-size: 0.85rem; }
+        .player-cat { font-size: 0.65rem; color: #666; font-weight: normal; }
+        .player-fr-num { font-size: 0.75rem; color: #d35400; font-weight: bold; white-space: nowrap; }
 
-        .timer-container { position: relative; display: flex; align-items: center; gap: 10px; background: #000; padding: 5px 15px; border-radius: 10px; border: 2px solid #444; }
-        #timer-display { font-family: 'Courier New', Courier, monospace; font-size: 42px; color: #00ff00; font-weight: bold; min-width: 130px; text-align: center; cursor: pointer; user-select: none; }
-        #start-btn { min-width: 80px; font-weight: 900; border-radius: 5px; border: none; padding: 10px; cursor: pointer; }
-        .btn-start-style { background-color: var(--btn-green); color: white; }
-        .btn-stop-style { background-color: var(--btn-red); color: white; }
+        .res-card, .admin-card { background: #fffde7; border: 2px solid #fbc02d; border-radius: 8px; padding: 8px; margin-bottom: 10px; position: relative; color: #000; }
+        .admin-card { background: #fff; border: 1px solid #bdc3c7; }
+        .btn-delete { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; background: #e74c3c; color: white; border: none; border-radius: 50%; font-size: 16px; cursor: pointer; z-index: 15; }
+        .res-header { font-weight: bold; font-size: 0.95rem; border-bottom: 1px solid #ddd; margin-bottom: 8px; padding-bottom: 4px; color: #2c3e50; display: flex; justify-content: space-between; }
+        .res-player-line { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-weight: bold; font-size: 1rem; }
+        .line-row { display: flex; align-items: center; }
+        .line-label { font-size: 0.7rem; width: 30px; color: #666; }
+        .res-no { min-width: 25px; }
+        .res-player-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        #timer-edit-popup { display: none; position: absolute; top: 60px; left: 0; background: #333; border: 2px solid var(--accent-yellow); padding: 10px; border-radius: 8px; z-index: 4000; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-        .edit-row { display: flex; align-items: center; justify-content: center; gap: 15px; }
-        .edit-unit { display: flex; flex-direction: column; align-items: center; }
-        .spin-btn { background: #555; color: white; border: none; width: 50px; height: 40px; font-size: 24px; cursor: pointer; border-radius: 4px; }
-        .spin-btn:hover { background: #777; }
-        .edit-val { font-size: 32px; font-weight: bold; margin: 5px 0; color: var(--accent-yellow); font-family: monospace; }
+        .res-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+        .res-actions button { padding: 8px 2px; font-size: 0.85rem; font-weight: bold; border-radius: 6px; border: 1px solid #aaa; background: #fff; cursor: pointer; }
+        .btn-execute-large { grid-column: span 3; padding: 12px !important; background: #27ae60 !important; color: white !important; font-size: 1.1rem !important; }
 
-        main { 
-            display: grid; 
-            grid-template-columns: 310px 310px 310px 1fr; 
-            gap: 10px; padding: 10px; flex-grow: 1; height: calc(100vh - 65px); box-sizing: border-box; 
-        }
+        .status-medical { color: var(--text-medical) !important; }
+        .status-tactical { color: var(--text-tactical) !important; }
+        .status-injury { background-color: var(--bg-injury) !important; }
+        .status-yc { background-color: var(--bg-yc) !important; color: #000 !important; }
+        .status-ofr { background-color: var(--bg-ofr) !important; color: #000 !important; }
+        .status-rc { background-color: var(--bg-rc) !important; color: #fff !important; }
+        .timer-remaining { color: #e74c3c; font-family: monospace; font-size: 1rem; }
 
-        .column { display: flex; flex-direction: column; gap: 10px; height: 100%; overflow: hidden; }
+        .log-entry { font-size: 0.8rem; padding: 6px 4px; border-bottom: 1px solid #eee; background: #fff; }
+        .log-header { font-weight: bold; padding: 2px 4px; border-radius: 3px; margin-bottom: 2px; display: inline-block; }
+        .log-yc { background-color: var(--bg-yc); color: #000; }
+        .log-rc { background-color: var(--bg-rc); color: #fff; }
+        .log-ofr { background-color: var(--bg-ofr); color: #000; }
+        .log-default { color: #27ae60; }
 
-        .panel-header { padding: 6px; text-align: center; font-weight: bold; font-size: 13px; color: white; height: 30px; box-sizing: border-box; }
-        .panel-header.green { background-color: var(--btn-green); }
-        .panel-header.blue { background-color: var(--btn-blue); }
-        .panel-header.yellow { background-color: var(--accent-yellow); color: black; }
-
-        .list-container { background: white; color: black; border: 1px solid #ccc; overflow: hidden; box-sizing: border-box; transition: background-color 0.2s; }
-        .list-container.drag-over { background-color: #e3f2fd; border: 2px dashed var(--btn-blue); }
-        
-        #field-list { height: 550px; }
-        #bench-list { height: 295px; }
-        #reservation-list, #management-list, #main-log, #penalty-log, #ejected-list { overflow-y: auto; }
-
-        #setting-area { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
-        .setting-row { display: flex; gap: 5px; width: 100%; align-items: center; }
-        .setting-btn { flex: 1; padding: 8px 2px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; font-size: 11px; text-align: center; }
-        
-        .half-end-box { flex: 1.5; display: flex; align-items: center; background: #eee; border-radius: 4px; padding-right: 5px; }
-        #half-end-time-display { font-weight: bold; font-size: 14px; color: var(--btn-red); margin-left: auto; }
-
-        .player-row { display: grid; grid-template-columns: 28px 42px 135px 30px 45px 35px; align-items: center; height: 34.5px; border-bottom: 1px solid #eee; padding: 0 2px 0 5px; font-size: 13px; cursor: pointer; background-color: white; position: relative; }
-        .player-row.selected { background-color: var(--selected-orange) !important; color: white !important; }
-        .player-row.selected * { color: white !important; }
-        .player-row.fr-match { background-color: var(--fr-highlight); }
-        
-        /* 出血/HIA等で治療中（OUT）の選手は黒文字（指示通り） */
-        .player-row.status-treating { color: #000000 !important; }
-        .player-row.status-treating .player-name { color: #000000 !important; }
-        
-        .player-row.status-tactical-out { color: var(--tactical-blue) !important; }
-        .player-row.status-tactical-out .player-name { color: var(--tactical-blue) !important; }
-        .player-row.status-injured-out { background-color: var(--injured-gray) !important; color: #7f8c8d !important; cursor: not-allowed; }
-        .player-row.status-injured-out * { color: #7f8c8d !important; }
-        
-        .player-row.empty-row { color: #888; } 
-
-        .pos-circle { width: 20px; height: 20px; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; }
-        .field-circle { background-color: var(--circle-green); }
-        .bench-circle { background-color: var(--circle-blue); }
-        .red-circle { background-color: var(--circle-red); }
-        .player-name { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .fr-cond { color: var(--btn-orange); font-weight: bold; font-size: 11px; text-align: right; }
-
-        .btn-ejected-del { background: var(--btn-gray); color: white; border: none; padding: 2px 4px; border-radius: 3px; font-size: 9px; cursor: pointer; font-weight: bold; }
-
-        .log-entry { font-size: 12px; padding: 8px; border-bottom: 1px solid #ddd; position: relative; color: black; }
-        .log-entry.yc-bg { background-color: #fff176; }
-        .log-entry.rc-bg { background-color: #ffcdd2; }
-        .btn-log-del { position: absolute; top: 5px; right: 5px; background: var(--btn-gray); color: white; border: none; padding: 2px 6px; border-radius: 3px; font-size: 10px; cursor: pointer; }
-
-        .reserve-card { margin: 5px; padding: 8px; border: 2px solid var(--btn-green); border-radius: 8px; background: white; position: relative; display: flex; align-items: center; font-size: 12px; gap: 5px; }
-        .reserve-info { flex-grow: 1; overflow: hidden; }
-        .reserve-remaining { position: absolute; top: 5px; right: 8px; color: var(--btn-red); font-weight: bold; font-size: 12px; font-family: monospace; }
-        .reserve-btns { display: flex; gap: 3px; flex-shrink: 0; margin-top: 15px; }
-        .btn-reserve-exe { background: var(--btn-green); color: white; border: none; width: 45px; height: 35px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; }
-        .btn-reserve-del { background: var(--btn-gray); color: white; border: none; width: 45px; height: 35px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; }
-
-        .mgt-card { margin: 5px; padding: 10px; border: 2px solid var(--btn-orange); border-radius: 10px; background: white; }
-        .mgt-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; font-size: 11px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-        .mgt-type { color: var(--btn-orange); }
-        .mgt-timer { font-size: 24px; color: var(--btn-red); font-family: monospace; font-weight: bold; }
-        .mgt-player-info { font-size: 13px; margin: 8px 0; line-height: 1.4; }
-        .mgt-reason-input { width: 100%; padding: 5px; margin: 5px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 12px; }
-        .mgt-btns-row { display: flex; flex-direction: column; gap: 8px; }
-        .mgt-status-btns { display: flex; gap: 4px; justify-content: flex-start; flex-wrap: wrap; align-items: center; }
-        .mgt-status-btns button { font-size: 11px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #f8f8f8; font-weight: bold; flex: 1; min-width: 60px; }
-        
-        .mgt-status-btns button.active-yellow { background: var(--accent-yellow) !important; color: black !important; border-color: var(--accent-yellow) !important; }
-        .mgt-status-btns button.active-red { background: var(--light-red) !important; color: #c0392b !important; border-color: var(--btn-red) !important; }
-        .mgt-status-btns button.active-normal { background: var(--btn-orange) !important; color: white !important; border-color: var(--btn-orange) !important; }
-        .btn-decision-exe { background: var(--btn-green) !important; color: white !important; border-color: var(--btn-green) !important; }
-
-        .mgt-action-btns { display: flex; gap: 4px; justify-content: flex-end; }
-        .btn-mgt-exe { background: var(--btn-green); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; }
-        .btn-mgt-del { background: var(--btn-gray); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; }
-
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 3000; align-items: center; justify-content: center; }
-        .modal-content { background: white; padding: 15px; border-radius: 12px; width: 310px; color: black; max-height: 90vh; overflow-y: auto; }
-        .modal-title { font-weight: bold; margin-bottom: 10px; border-bottom: 2px solid var(--btn-blue); padding-bottom: 5px; font-size: 14px; }
-
-        #floating-menu { display: none; position: fixed; top: 120px; left: 50%; transform: translateX(-50%); width: 280px; background: var(--bg-dark); border-radius: 12px; border: 2px solid #444; z-index: 2000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        #menu-drag-handle { padding: 10px; background: #1a252f; cursor: move; text-align: center; color: var(--accent-yellow); font-weight: bold; border-radius: 10px 10px 0 0; }
-        .menu-grid { padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .menu-grid button { padding: 10px 5px; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 12px; }
-        #open-menu-btn { position: fixed; bottom: 20px; right: 20px; padding: 15px 35px; background: var(--accent-yellow); color: black; font-weight: 900; border-radius: 40px; border: none; cursor: pointer; z-index: 1000; }
+        #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        #player-picker { background: white; width: 340px; max-height: 80%; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+        .picker-item { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.1rem; }
+        #uncontested-alert { color: #ff0000; font-weight: bold; display: none; font-size: 0.8rem; }
     </style>
 </head>
-<body onload="init()">
+<body id="drop-zone">
 
 <header>
-    <div class="header-left">
-        <div id="team-name-display">TEAM NAME</div>
-        <div id="category-display">Category: 0/0</div>
-    </div>
-    <div id="uncontested-banner">アンコンテスト・スクラム</div>
-    <div class="header-right" style="display:flex; align-items:center; gap:15px;">
-        <div class="timer-container">
-            <div id="timer-display" ondblclick="toggleTimerEdit()">00:00</div>
-            <button onclick="toggleTimer()" id="start-btn" class="btn-start-style">START</button>
-            <div id="timer-edit-popup">
-                <div class="edit-row">
-                    <div class="edit-unit">
-                        <button class="spin-btn" onclick="adjustTime(60)">▲</button>
-                        <div class="edit-val" id="edit-min">00</div>
-                        <button class="spin-btn" onclick="adjustTime(-60)">▼</button>
-                    </div>
-                    <div style="font-size:32px; font-weight:bold; padding-top:40px;">:</div>
-                    <div class="edit-unit">
-                        <button class="spin-btn" onclick="adjustTime(1)">▲</button>
-                        <div class="edit-val" id="edit-sec">00</div>
-                        <button class="spin-btn" onclick="adjustTime(-1)">▼</button>
-                    </div>
-                </div>
-                <button onclick="toggleTimerEdit()" style="width:100%; margin-top:10px; padding:5px; background:var(--btn-gray); color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">閉じる</button>
-            </div>
+    <div class="header-top">
+        <div id="team-name" style="font-weight:bold">Rugby Sub Manager</div>
+        <div class="stopwatch-container">
+            <div id="timer-display">00:00</div>
+            <button class="sw-btn btn-start" onclick="timerStart()">START</button>
+            <button class="sw-btn btn-pause" onclick="timerPause()">PAUSE</button>
+            <button class="sw-btn btn-reset" onclick="timerReset()">RESET</button>
         </div>
-        <button onclick="resetTimer()" style="background:var(--btn-gray); color:white; border:none; padding:8px 12px; border-radius:5px; cursor:pointer; font-weight:bold;">RESET</button>
+        <div id="uncontested-alert">⚠️ アンコンテスト</div>
+    </div>
+    <div class="stats-bar">
+        <span>FIELD: <b id="count-field">0</b></span>
+        <span>Cat C: <b id="count-cat-c">0</b></span>
+        <span>FR(F): <b id="count-fr">0</b></span>
+        <span id="status-msg" style="margin-left:auto; opacity:0.7">Excelをドロップ</span>
     </div>
 </header>
 
 <main>
-    <div class="column">
-        <div class="panel-header green">FIELD (1-15)</div>
-        <div class="list-container" id="field-list"></div>
-        <div class="panel-header yellow">SETTING</div>
-        <div class="list-container" id="setting-area" style="flex-grow:1;">
-            <div class="setting-row">
-                <input type="file" id="excel-input" style="display:none" onchange="handleExcel(event)">
-                <button class="setting-btn" onclick="document.getElementById('excel-input').click()" style="background:var(--btn-blue);">LOAD EXCEL</button>
-                <button class="setting-btn" onclick="openCatModal()" style="background:var(--btn-blue);">CATEGORY</button>
-            </div>
-            <div class="setting-row">
-                <button class="setting-btn" onclick="openRestoreModal()" style="background:var(--btn-red);">選手復帰</button>
-                <div class="half-end-box">
-                    <button class="setting-btn" onclick="recordHalfEnd()" style="background:var(--btn-orange); flex:none; width:65px;">前半終了</button>
-                    <div id="half-end-time-display">--:--</div>
-                </div>
-            </div>
-        </div>
+    <div class="col-field">
+        <section class="column"><h2 style="color: var(--field-green);">FIELD</h2><div id="field-list" class="scroll-area"></div></section>
     </div>
-    <div class="column">
-        <div class="panel-header blue">BENCH (16-23)</div>
-        <div class="list-container" id="bench-list"></div>
-        <div class="panel-header yellow">退場</div>
-        <div class="list-container" id="ejected-list" style="height: 140px;"></div>
-        <div class="panel-header yellow">PENALTY LOG</div>
-        <div class="list-container" id="penalty-log" style="flex-grow: 1;"></div>
+    
+    <div class="col-bench">
+        <section class="column" id="bench-drop-target"><h2 style="color: var(--bench-orange);">BENCH</h2><div id="bench-list" class="scroll-area"></div></section>
     </div>
-    <div class="column">
-        <div class="panel-header yellow">予約リスト</div>
-        <div class="list-container" id="reservation-list" style="height: 50%;"></div>
-        <div class="panel-header yellow">管理エリア</div>
-        <div class="list-container" id="management-list" style="flex-grow: 1;"></div>
+
+    <div class="col-res-admin">
+        <section class="column" id="reserve-drop-area" style="flex: 1;"><h2>予約リスト</h2><div id="res-list" class="scroll-area"></div></section>
+        <section class="column" style="flex: 1.5;"><h2>管理リスト</h2><div id="admin-list" class="scroll-area"></div></section>
     </div>
-    <div class="column">
-        <div class="panel-header yellow">LOG</div>
-        <div class="list-container" id="main-log" style="flex-grow: 1;"></div>
+
+    <div class="col-log">
+        <section class="column"><h2>LOG</h2><div id="log-list" class="scroll-area"></div></section>
     </div>
 </main>
 
-<div id="player-select-modal" class="modal-overlay">
-    <div class="modal-content">
-        <div class="modal-title">交代選手を選択してください</div>
-        <div id="modal-player-list"></div>
-        <button onclick="closeModal()" style="width:100%; margin-top:10px; padding:10px; background:var(--btn-gray); color:white; border:none; border-radius:4px; font-weight:bold;">キャンセル</button>
+<div id="modal-overlay">
+    <div id="player-picker">
+        <h2 style="font-size: 1.1rem; padding: 15px; margin:0; background: #2c3e50; color:white; text-align:center;">ベンチ選手を選択</h2>
+        <div id="picker-list" style="overflow-y:auto; flex-grow:1;"></div>
+        <button onclick="closePicker()" style="padding:18px; border:none; background:#eee; font-weight:bold; font-size:1rem;">キャンセル</button>
     </div>
 </div>
-
-<div id="restore-player-modal" class="modal-overlay">
-    <div class="modal-content">
-        <div class="modal-title">選手強制復帰（初期状態）</div>
-        <div id="restore-player-list" style="max-height: 400px; overflow-y: auto;"></div>
-        <div style="display:flex; gap:10px; margin-top:10px;">
-            <button id="restore-execute-btn" onclick="executePlayerRestore()" style="flex:1; padding:10px; background:var(--btn-red); color:white; border:none; border-radius:4px; font-weight:bold; opacity:0.5;" disabled>初期位置に戻す</button>
-            <button onclick="closeRestoreModal()" style="flex:1; padding:10px; background:var(--btn-gray); color:white; border:none; border-radius:4px; font-weight:bold;">閉じる</button>
-        </div>
-    </div>
-</div>
-
-<div id="cat-setting-modal" class="modal-overlay">
-    <div class="modal-content">
-        <div class="modal-title">CATEGORY上限設定 (A2+B+C)</div>
-        <div style="margin: 20px 0; display: flex; flex-direction: column; align-items: center; gap: 10px;">
-            <label style="font-size:12px; color:#666;">合計人数上限</label>
-            <div style="display: flex; align-items: center; gap: 20px;">
-                <button class="spin-btn" onclick="adjustCatLimit(-1)" style="background:#555; color:white; border:none; width:50px; height:50px; font-size:24px; border-radius:4px; cursor:pointer;">▼</button>
-                <div id="cat-limit-display" style="font-size: 36px; font-weight: bold; color: var(--btn-blue); min-width: 50px; text-align: center;">4</div>
-                <button class="spin-btn" onclick="adjustCatLimit(1)" style="background:#555; color:white; border:none; width:50px; height:50px; font-size:24px; border-radius:4px; cursor:pointer;">▲</button>
-            </div>
-        </div>
-        <div style="display:flex; gap:10px;">
-            <button onclick="saveCatLimit()" style="flex:1; padding:10px; background:var(--btn-blue); color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">保存</button>
-            <button onclick="closeCatModal()" style="flex:1; padding:10px; background:var(--btn-gray); color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">閉じる</button>
-        </div>
-    </div>
-</div>
-
-<div id="floating-menu">
-    <div id="menu-drag-handle">COMMAND CENTER</div>
-    <div class="menu-grid">
-        <button style="background:var(--btn-blue)" onclick="menuAction('戦術交代')">戦術交代</button>
-        <button style="background:var(--accent-yellow); color:black" onclick="menuAction('YC')">YC</button>
-        <button style="background:#2980b9" onclick="menuAction('負傷交代')">負傷交代</button>
-        <button style="background:var(--btn-red)" onclick="menuAction('RC')">RC</button>
-        <button style="background:#3498db" onclick="menuAction('出血交代')">出血交代</button>
-        <button style="background:#8e44ad" onclick="menuAction('OFR')">OFR</button>
-        <button style="background:#2c3e50" onclick="menuAction('HIA')">HIA</button>
-        <button style="background:#1abc9c" onclick="menuAction('一時退出')">一時退出</button>
-        <button style="background:#5D4037" onclick="menuAction('出血HIA')">出血HIA</button>
-        <button style="background:#795548" onclick="menuAction('SWAP')">SWAP</button>
-        <button style="background:#555; grid-column: span 2;" onclick="closeMenu()">CLOSE</button>
-    </div>
-</div>
-
-<button id="open-menu-btn" onclick="openMenu()">COMMAND MENU</button>
 
 <script>
-    let seconds = 0, timerInterval = null, selectedIds = [], playersMaster = [], initialMaster = [], managementTimers = {}, ejectedPlayers = [], managementSeconds = {};
-    let isUncontested = false, categoryLimit = 4;
-    let halfEndTime = null;
-    let restoreTargetId = null;
+    let fieldPositions = Array.from({length: 15}, (_, i) => ({ posId: i + 1, player: null }));
+    let benchPlayers = [];
+    let reservations = [];
+    let adminCards = [];
+    let logs = [];
+    let draggedData = null;
 
-    function init() {
-        openMenu();
-        setupDragAndDrop();
-        renderLists();
+    let startTime = 0, elapsedTime = 0, timerInterval = null;
+    function timerStart() { if (!timerInterval) { startTime = Date.now() - elapsedTime; timerInterval = setInterval(() => { elapsedTime = Date.now() - startTime; updateTimerDisplay(); processAdminTimers(); }, 100); } }
+    function timerPause() { clearInterval(timerInterval); timerInterval = null; }
+    function timerReset() { if (confirm("リセットしますか？")) { timerPause(); elapsedTime = 0; updateTimerDisplay(); } }
+    function updateTimerDisplay() { document.getElementById('timer-display').innerText = getFormattedTime(); }
+    function getFormattedTime() { const ts = Math.floor(elapsedTime / 1000); return `${Math.floor(ts/60).toString().padStart(2,'0')}:${(ts%60).toString().padStart(2,'0')}`; }
+
+    function processAdminTimers() {
+        if (!timerInterval) return;
+        adminCards.forEach(card => {
+            if (card.remainingSeconds > 0) {
+                const passed = Math.floor((Date.now() - card.execRealTimestamp) / 1000);
+                card.remainingSeconds = Math.max(0, card.totalSeconds - passed);
+            }
+        });
+        renderAdminCards();
     }
 
-    function setupDragAndDrop() {
-        const dropZones = [document.getElementById('field-list'), document.getElementById('bench-list')];
-        dropZones.forEach(zone => {
-            zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-            zone.addEventListener('dragleave', () => { zone.classList.remove('drag-over'); });
-            zone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                zone.classList.remove('drag-over');
-                const file = e.dataTransfer.files[0];
-                if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) { processExcelFile(file); }
+    function addLog(typeName, p1, p2 = null) {
+        logs.unshift({ time: getFormattedTime(), typeName, p1: {...p1}, p2: p2 ? {...p2} : null });
+        renderLogs();
+    }
+
+    function renderLogs() {
+        document.getElementById('log-list').innerHTML = logs.map(l => {
+            let logCls = 'log-default';
+            if (l.typeName === 'YC') logCls = 'log-yc';
+            else if (l.typeName === 'RC') logCls = 'log-rc';
+            else if (l.typeName === 'OFR') logCls = 'log-ofr';
+            return `<div class="log-entry"><div class="log-header ${logCls}">[${l.time}] ${l.typeName}</div><div>${l.p2 ? 'OUT:' : ''} #${l.p1.no} ${l.p1.name}</div>${l.p2 ? `<div>IN: #${l.p2.no} ${l.p2.name}</div>` : ''}</div>`;
+        }).join('');
+    }
+
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.addEventListener('dragover', (e) => e.preventDefault());
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const workbook = XLSX.read(new Uint8Array(ev.target.result), {type: 'array'});
+                processExcel(XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1}));
+            };
+            reader.readAsArrayBuffer(file);
+        }
+    });
+
+    function processExcel(data) {
+        if (data[0] && data[0][2]) document.getElementById('team-name').innerText = data[0][2];
+        const players = [];
+        for (let i = 2; i < data.length; i++) {
+            const row = data[i]; if (!row || !row[0]) continue;
+            players.push({
+                id: 'P' + row[0], no: parseInt(row[0]), name: String(row[1]||"").trim(),
+                category: String(row[2]||"").trim(),
+                fr: { fr1: String(row[3]).toLowerCase()==='true', fr2: String(row[4]).toLowerCase()==='true', fr3: String(row[5]).toLowerCase()==='true' },
+                status: 'normal'
             });
+        }
+        fieldPositions = players.filter(p => p.no <= 15).map((p, idx) => ({ posId: idx + 1, player: p }));
+        benchPlayers = players.filter(p => p.no > 15);
+        render();
+    }
+
+    function sortBench() {
+        benchPlayers.sort((a, b) => {
+            const aIsCard = ['yc', 'rc', 'ofr'].includes(a.status);
+            const bIsCard = ['yc', 'rc', 'ofr'].includes(b.status);
+            if (aIsCard && !bIsCard) return 1;
+            if (!aIsCard && bIsCard) return -1;
+            return a.no - b.no;
         });
     }
 
-    function openMenu() { document.getElementById('floating-menu').style.display = 'block'; }
-    function closeMenu() { document.getElementById('floating-menu').style.display = 'none'; }
-
-    function openCatModal() { 
-        document.getElementById('cat-limit-display').innerText = categoryLimit; 
-        document.getElementById('cat-setting-modal').style.display = 'flex'; 
-    }
-    function closeCatModal() { document.getElementById('cat-setting-modal').style.display = 'none'; }
-    function adjustCatLimit(val) {
-        let display = document.getElementById('cat-limit-display');
-        let current = parseInt(display.innerText) || 0;
-        display.innerText = Math.max(0, current + val);
-    }
-    function saveCatLimit() { 
-        categoryLimit = parseInt(document.getElementById('cat-limit-display').innerText) || 0; 
-        closeCatModal(); 
-        updateCategoryDisplay(); 
+    function getPlayerHTML(p) {
+        if (!p) return '---';
+        let frNumbers = [];
+        if (p.fr.fr1) frNumbers.push("1");
+        if (p.fr.fr2) frNumbers.push("2");
+        if (p.fr.fr3) frNumbers.push("3");
+        const frDisplay = frNumbers.length > 0 ? `<span class="player-fr-num">${frNumbers.join(',')}</span>` : '';
+        const catDisplay = p.category ? `<span class="player-cat">[${p.category}]</span>` : '';
+        
+        return `
+            <span class="jersey-no">#${p.no}</span>
+            <span class="player-name">${p.name}</span>
+            ${catDisplay}
+            ${frDisplay}
+        `;
     }
 
-    function openRestoreModal() {
-        if (initialMaster.length === 0) return alert("Excelデータが読み込まれていません。");
-        const list = document.getElementById('restore-player-list');
-        list.innerHTML = '';
-        restoreTargetId = null;
-        document.getElementById('restore-execute-btn').disabled = true;
-        document.getElementById('restore-execute-btn').style.opacity = "0.5";
+    function render() {
+        sortBench(); renderField(); renderBench(); renderReservations(); renderAdminCards(); updateStats();
+    }
 
-        initialMaster.forEach((p, idx) => {
-            if (p.id === 'empty') return;
+    function renderField() {
+        const list = document.getElementById('field-list'); list.innerHTML = '';
+        fieldPositions.forEach(item => {
+            const p = item.player;
+            const isReserved = p ? reservations.some(r => r.out?.id === p.id || r.in?.id === p.id) : false;
             const div = document.createElement('div');
-            div.className = 'player-row';
-            div.style.border = "1px solid #eee";
-            div.style.marginBottom = "2px";
-            div.dataset.rid = p.id;
-            const posNum = idx + 1;
-            const typeClass = posNum <= 15 ? 'field-circle' : 'bench-circle';
-            div.innerHTML = `<div class="pos-circle ${typeClass}">${posNum}</div><div class="jersey-no">No.${p.no}</div><div class="player-name">${p.name}</div><div style="font-size:10px; opacity:0.6; text-align:center;">${p.cat}</div><div class="fr-cond">${p.fr}</div><div></div>`;
-            div.onclick = () => {
-                document.querySelectorAll('#restore-player-list .player-row').forEach(r => r.classList.remove('selected'));
-                div.classList.add('selected');
-                restoreTargetId = p.id;
-                document.getElementById('restore-execute-btn').disabled = false;
-                document.getElementById('restore-execute-btn').style.opacity = "1";
+            div.className = `player-card ${isReserved ? 'is-reserved' : ''}`;
+            div.innerHTML = `<div class="pos-label">${item.posId}</div><div class="player-info">${getPlayerHTML(p)}</div>`;
+            if (p) {
+                div.draggable = true;
+                div.ondragstart = () => { draggedData = { source: 'field', data: item }; };
+            }
+            div.ondragover = (e) => e.preventDefault();
+            div.ondrop = (e) => {
+                e.preventDefault();
+                if (draggedData?.source === 'bench') {
+                    const inP = draggedData.data;
+                    const cardType = (['yc', 'ofr', 'rc'].includes(inP.status)) ? inP.status.toUpperCase() : null;
+                    if (cardType) reservations.push({ id: Date.now(), type: 'return', cardType: cardType, posId: item.posId, in: {...inP}, out: p ? {...p} : null });
+                    else if (!reservations.some(r => r.in?.id === inP.id)) reservations.push({ id: Date.now(), type: 'sub', posId: item.posId, out: p ? {...p} : null, in: {...inP} });
+                    render();
+                }
             };
             list.appendChild(div);
         });
-        document.getElementById('restore-player-modal').style.display = 'flex';
     }
 
-    function closeRestoreModal() { document.getElementById('restore-player-modal').style.display = 'none'; }
-
-    function executePlayerRestore() {
-        if (!restoreTargetId) return;
-        const pInitial = initialMaster.find(x => x.id === restoreTargetId);
-        const originalIdx = initialMaster.findIndex(x => x.id === restoreTargetId);
-        if (!pInitial || originalIdx === -1) return;
-
-        if (!confirm(`No.${pInitial.no} ${pInitial.name} を初期位置（ポジション ${originalIdx + 1}）に強制復帰させますか？\n現在この選手に関わる予約や管理データは削除されます。`)) return;
-
-        playersMaster = playersMaster.map(p => p.id === restoreTargetId ? { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' } : p);
-        ejectedPlayers = ejectedPlayers.filter(p => p.id !== restoreTargetId);
-
-        document.querySelectorAll('.reserve-card, .mgt-card').forEach(card => {
-            if (card.dataset.outId === restoreTargetId || card.dataset.inId === restoreTargetId) {
-                const id = card.id.split('-')[1];
-                if (managementTimers[id]) clearInterval(managementTimers[id]);
-                delete managementTimers[id]; delete managementSeconds[id];
-                card.remove();
+    function renderBench() {
+        const list = document.getElementById('bench-list'); list.innerHTML = '';
+        benchPlayers.forEach(p => {
+            const isReserved = reservations.some(r => r.in?.id === p.id || r.out?.id === p.id);
+            const statusCls = ['yc','ofr','rc','injury'].includes(p.status) ? 'status-' + p.status : '';
+            const div = document.createElement('div');
+            div.className = `player-card ${isReserved ? 'is-reserved' : ''} ${statusCls}`;
+            let textCls = '';
+            if (['medical', 'blood'].includes(p.status)) textCls = 'status-medical';
+            else if (p.status === 'tactical') textCls = 'status-tactical';
+            div.innerHTML = `<div class="player-info ${textCls}">${getPlayerHTML(p)}</div>`;
+            if (p.status !== 'injury') {
+                div.draggable = true;
+                div.ondragstart = () => { draggedData = { source: 'bench', data: p }; };
             }
-        });
-
-        playersMaster[originalIdx] = JSON.parse(JSON.stringify(pInitial));
-        playersMaster[originalIdx].status = 'normal';
-
-        addLog("選手強制復帰", null, pInitial, `ポジション ${originalIdx + 1} へ復帰`);
-        renderLists();
-        checkFRConditions();
-        closeRestoreModal();
-    }
-
-    function updateCategoryDisplay() {
-        let count = 0;
-        for (let i = 0; i < 15; i++) {
-            const cat = (playersMaster[i].cat || '').toUpperCase();
-            if (['A2','B','C','Ａ２','Ｂ','Ｃ'].includes(cat)) count++;
-        }
-        document.getElementById('category-display').innerText = `Category: ${count}/${categoryLimit}`;
-    }
-
-    function selectPlayer(rowElement) {
-        const id = rowElement.dataset.id;
-        if (!id) return;
-        const p = playersMaster.find(x => x.id === id) || ejectedPlayers.find(x => x.id === id);
-        if (p?.status === 'injured-out') return;
-
-        const idx = selectedIds.indexOf(id);
-        if (idx > -1) {
-            rowElement.classList.remove('selected');
-            selectedIds.splice(idx, 1);
-        } else {
-            rowElement.classList.add('selected');
-            selectedIds.push(id);
-        }
-        updateFRHighlight();
-    }
-
-    function updateFRHighlight() {
-        document.querySelectorAll('.player-row').forEach(r => r.classList.remove('fr-match'));
-        if (selectedIds.length === 0) return;
-        const lastSelectedId = selectedIds[selectedIds.length - 1];
-        
-        let lastIdx = playersMaster.findIndex(p => p.id === lastSelectedId);
-        let pos = -1;
-        if (lastIdx !== -1 && lastIdx < 15) {
-            pos = lastIdx + 1;
-        } else {
-            const ejectedP = ejectedPlayers.find(p => p.id === lastSelectedId);
-            if (ejectedP) pos = ejectedP.originalPos;
-        }
-
-        if (pos === -1 || pos > 15) return;
-
-        let targetFR = "";
-        if (pos === 1) targetFR = "1";
-        else if (pos === 2) targetFR = "2";
-        else if (pos === 3) targetFR = "3";
-        else if (pos >= 4 && pos <= 8) targetFR = "FR";
-
-        if (pos === 1 || pos === 2 || pos === 3) {
-            document.querySelectorAll('.player-row').forEach(row => {
-                const pid = row.dataset.id;
-                const p = playersMaster.find(x => x.id === pid) || ejectedPlayers.find(x => x.id === pid);
-                if (p && p.status !== 'injured-out') {
-                    if (p.fr.includes(targetFR)) row.classList.add('fr-match');
+            div.ondragover = (e) => { e.preventDefault(); e.stopPropagation(); };
+            div.ondrop = (e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (draggedData.source === 'field') {
+                    const outP = draggedData.data.player;
+                    if (outP && !reservations.some(r => r.out?.id === outP.id)) {
+                        reservations.push({ id: Date.now(), type: 'sub', posId: draggedData.data.posId, out: {...outP}, in: {...p} });
+                        render();
+                    }
+                } else if (draggedData.source === 'bench') {
+                    const cardStatuses = ['yc','ofr','rc'];
+                    if (cardStatuses.includes(p.status) || cardStatuses.includes(draggedData.data.status)) {
+                        let cardP = cardStatuses.includes(p.status) ? p : draggedData.data;
+                        let normP = cardStatuses.includes(p.status) ? draggedData.data : p;
+                        const adminCard = adminCards.find(a => a.out.id === cardP.id);
+                        if (adminCard) {
+                            reservations.push({ id: Date.now(), type: 'card_sub_waiting', bloodType: cardP.status.toUpperCase(), posId: adminCard.posId, out: {...cardP}, in: {...normP} });
+                            render();
+                        }
+                    }
                 }
+            };
+            list.appendChild(div);
+        });
+    }
+
+    const resArea = document.getElementById('reserve-drop-area');
+    resArea.ondragover = (e) => e.preventDefault();
+    resArea.ondrop = (e) => {
+        e.preventDefault();
+        if (draggedData?.source === 'field') {
+            const p = draggedData.data.player;
+            if (p && !reservations.some(r => r.out?.id === p.id)) {
+                reservations.push({ id: Date.now(), type: 'card', posId: draggedData.data.posId, out: {...p} });
+                render();
+            }
+        }
+    };
+
+    function renderReservations() {
+        const list = document.getElementById('res-list'); list.innerHTML = '';
+        reservations.forEach(res => {
+            const card = document.createElement('div'); card.className = 'res-card';
+            if (res.type === 'card_sub_waiting') {
+                card.innerHTML = `<button class="btn-delete" onclick="cancelRes(${res.id})">×</button><div class="res-header"><span>${res.bloodType} 待機中</span></div><div class="res-player-line"><div class="line-row"><span class="line-label">OUT</span><span class="res-no">#${res.out.no}</span><span class="res-player-name">${res.out.name}</span></div><div class="line-row"><span class="line-label">IN</span><span class="res-no">#${res.in ? res.in.no : '--'}</span><span class="res-player-name">${res.in ? res.in.name : '未選択'}</span></div></div><div class="res-actions" style="grid-template-columns: 1fr 1fr;"><button style="color:var(--text-tactical)" onclick="executeCardWaitingSub(${res.id}, 'tactical')">戦術</button><button style="background:var(--bg-injury)" onclick="executeCardWaitingSub(${res.id}, 'injury')">負傷</button></div>`;
+            } else if (res.type === 'sub') {
+                card.innerHTML = `<button class="btn-delete" onclick="cancelRes(${res.id})">×</button><div class="res-header">POS ${res.posId} 交代予約</div><div class="res-player-line"><div class="line-row"><span class="line-label">OUT</span><span class="res-no">#${res.out?.no||'--'}</span><span class="res-player-name">${res.out?.name||'未選択'}</span></div><div class="line-row"><span class="line-label">IN</span><span class="res-no">#${res.in?.no||'--'}</span><span class="res-player-name">${res.in?.name||'未選択'}</span></div></div><div class="res-actions"><button style="color:var(--text-tactical)" onclick="executeSub(${res.id}, 'tactical', '戦術交代')">戦術</button><button style="background:var(--bg-injury)" onclick="executeSub(${res.id}, 'injury', '負傷交代')">負傷</button><button style="color:var(--text-medical)" onclick="moveToAdminBlood(${res.id}, '出血交代')">出血</button><button style="color:var(--text-medical)" onclick="moveToAdminBlood(${res.id}, 'HIA')">HIA</button><button style="color:var(--text-medical)" onclick="moveToAdminBlood(${res.id}, '出血HIA')">出血HIA</button><button onclick="executeSub(${res.id}, 'normal', '一時交代')">一時交代</button></div>`;
+            } else if (res.type === 'blood_return') {
+                card.innerHTML = `<button class="btn-delete" onclick="cancelRes(${res.id})">×</button><div class="res-header"><span>POS ${res.posId} ${res.bloodType}</span><span style="color:red">復帰待機</span></div><div class="res-player-line"><div class="line-row"><span class="line-label">復帰</span><span class="res-no">#${res.out.no}</span><span class="res-player-name">${res.out.name}</span></div><div class="line-row"><span class="line-label">種別</span><span>${res.subType}</span></div></div><button class="btn-execute-large" onclick="executeBloodReturn(${res.id})">実行</button>`;
+            } else if (res.type === 'return') {
+                card.innerHTML = `<button class="btn-delete" onclick="cancelRes(${res.id})">×</button><div class="res-header">POS ${res.posId} ${res.cardType}復帰</div><div class="res-player-line"><div class="line-row"><span class="line-label">IN</span><span class="res-no">#${res.in.no}</span><span class="res-player-name">${res.in.name}</span></div></div><button class="btn-execute-large" onclick="executeReturn(${res.id})">実行</button>`;
+            } else {
+                card.innerHTML = `<button class="btn-delete" onclick="cancelRes(${res.id})">×</button><div class="res-header">POS ${res.posId} 退場予約</div><div class="res-player-line"><div class="line-row"><span class="line-label">OUT</span><span class="res-no">#${res.out.no}</span><span class="res-player-name">${res.out.name}</span></div></div><div class="res-actions"><button style="background:#ffeb3b;" onclick="moveToAdminCard(${res.id}, 'YC')">YC</button><button style="background:#f44336;color:white;" onclick="moveToAdminCard(${res.id}, 'RC')">RC</button><button style="background:#ff9800;color:white;" onclick="moveToAdminCard(${res.id}, 'OFR')">OFR</button></div>`;
+            }
+            list.appendChild(card);
+        });
+    }
+
+    function executeSub(resId, type, typeName) {
+        const res = reservations.find(r => r.id === resId);
+        if (!res.in) {
+            const list = document.getElementById('picker-list'); list.innerHTML = '';
+            benchPlayers.filter(p => !['yc','ofr','rc'].includes(p.status)).forEach(p => {
+                const item = document.createElement('div'); item.className = 'picker-item';
+                item.innerHTML = `<span>#${p.no}</span><span>${p.name}</span>`;
+                item.onclick = () => { res.in = {...p}; closePicker(); executeSub(resId, type, typeName); };
+                list.appendChild(item);
             });
+            document.getElementById('modal-overlay').style.display = 'flex'; return;
         }
+        const fPos = fieldPositions.find(p => p.posId === res.posId);
+        const inIdx = benchPlayers.findIndex(p => p.id === res.in.id);
+        if (inIdx !== -1) {
+            if (res.out) benchPlayers[inIdx] = {...res.out, status: type};
+            else benchPlayers.splice(inIdx, 1);
+        }
+        fPos.player = {...res.in, status: 'normal'};
+        addLog(typeName, res.out || res.in, res.out ? res.in : null);
+        reservations = reservations.filter(r => r.id !== resId);
+        render();
     }
 
-    function clearSelection() { 
-        document.querySelectorAll('.player-row').forEach(r => { r.classList.remove('selected'); r.classList.remove('fr-match'); });
-        selectedIds = []; 
+    function executeCardWaitingSub(resId, type) {
+        const res = reservations.find(r => r.id === resId);
+        if (!res.in) {
+            const list = document.getElementById('picker-list'); list.innerHTML = '';
+            benchPlayers.filter(p => !['yc','ofr','rc'].includes(p.status)).forEach(p => {
+                const item = document.createElement('div'); item.className = 'picker-item';
+                item.innerHTML = `<span>#${p.no}</span><span>${p.name}</span>`;
+                item.onclick = () => { res.in = {...p}; closePicker(); executeCardWaitingSub(resId, type); };
+                list.appendChild(item);
+            });
+            document.getElementById('modal-overlay').style.display = 'flex'; return;
+        }
+        const fPos = fieldPositions.find(p => p.posId === res.posId);
+        benchPlayers = benchPlayers.filter(p => !(p.id === res.out.id && ['yc','rc','ofr'].includes(p.status)));
+        const inIdx = benchPlayers.findIndex(p => p.id === res.in.id);
+        if (inIdx !== -1) { benchPlayers[inIdx] = {...res.out, status: type}; }
+        fPos.player = {...res.in, status: 'normal'};
+        adminCards = adminCards.filter(a => a.out.id !== res.out.id);
+        addLog(`退場中交代(${type==='tactical'?'戦術':'負傷'})`, res.out, res.in);
+        reservations = reservations.filter(r => r.id !== resId);
+        render();
     }
 
-    function validateCatLimit(outId, inId, type) {
-        if (['YC', 'RC', 'OFR'].includes(type)) return true;
-        let tempPlayers = [...playersMaster];
-        
-        let outIdx = tempPlayers.findIndex(p => p.id === outId);
-        if (outIdx === -1) {
-            const ejectedP = ejectedPlayers.find(p => p.id === outId);
-            if (ejectedP) outIdx = ejectedP.originalPos - 1;
-        }
-
-        let inIdx = tempPlayers.findIndex(p => p.id === inId);
-        
-        if (outIdx !== -1 && outIdx < 15 && inIdx !== -1) {
-            let pIn = tempPlayers[inIdx];
-            tempPlayers[outIdx] = pIn;
-        } else if (outIdx !== -1 && outIdx < 15) {
-            tempPlayers[outIdx] = { cat: '' };
-        }
-        
-        let count = 0;
-        for (let i = 0; i < 15; i++) {
-            const cat = (tempPlayers[i].cat || '').toUpperCase();
-            if (['A2','B','C','Ａ２','Ｂ','Ｃ'].includes(cat)) count++;
-        }
-        if (count > categoryLimit) {
-            return confirm(`！！！カテゴリー人数オーバー！！！\n\n現在フィールド上の対象者(A2+B+C)が${count}名になります（制限: ${categoryLimit}名）。\nこのまま実行（予約）しますか？`);
-        }
-        return true;
-    }
-
-    function recordHalfEnd() {
-        if (halfEndTime !== null) { if (!confirm("既に前半終了処理がされています。再計算しますか？")) return; }
-        const recordedSeconds = seconds;
-        halfEndTime = recordedSeconds;
-        const currentTimeStr = formatTimerStr(recordedSeconds);
-        document.getElementById('half-end-time-display').innerText = currentTimeStr;
-        addLog("前半終了", null, null, `記録時間: ${currentTimeStr}`);
-        document.querySelectorAll('.mgt-card').forEach(card => {
-            const mid = card.id.replace('mgt-', ''), type = card.dataset.originType, startTimeStr = card.dataset.startTimeStr || "00:00";
-            if (['YC', 'RC', 'OFR', 'HIA', '出血HIA', '出血交代', '一時退出'].includes(type)) {
-                const startSec = timeStrToSeconds(startTimeStr), elapsedSec = recordedSeconds - startSec;
-                let initialDuration = (type === 'YC' || type === 'OFR') ? 600 : (type === 'RC' ? 1200 : (type === 'HIA' ? 720 : (type === '出血HIA' ? 1020 : 900)));
-                const remaining = Math.max(0, initialDuration - elapsedSec);
-                managementSeconds[mid] = remaining; updateMgtTimerDisplay(mid, remaining); card.dataset.halfAdjusted = "true";
-            }
+    function moveToAdminBlood(resId, typeName) {
+        const res = reservations.find(r => r.id === resId);
+        const fPos = fieldPositions.find(p => p.posId === res.posId);
+        const now = new Date();
+        adminCards.push({
+            id: Date.now(), type: 'BLOOD', bloodType: typeName, gameTime: getFormattedTime(),
+            pcTime: `${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`,
+            out: {...res.out}, in: {...res.in}, posId: res.posId,
+            totalSeconds: 900, remainingSeconds: 900, execRealTimestamp: Date.now()
         });
-        seconds = 2400; updateTimerDisplay(); if (timerInterval) toggleTimer();
+        const bIdx = benchPlayers.findIndex(p => p.id === res.in.id);
+        if(bIdx !== -1) benchPlayers[bIdx] = {...res.out, status: 'blood'};
+        fPos.player = {...res.in, status: 'normal'};
+        addLog(typeName, res.out, res.in);
+        reservations = reservations.filter(r => r.id !== resId);
+        render();
     }
 
-    function timeStrToSeconds(str) { const parts = str.split(':'); return parseInt(parts[0]) * 60 + parseInt(parts[1]); }
-
-    function menuAction(type) {
-        if (selectedIds.length === 0) return;
-        let p1 = null, p2 = null, actionType = type;
-
-        if (selectedIds.length >= 2) {
-            p1 = playersMaster.find(x => x.id === selectedIds[0]) || ejectedPlayers.find(x => x.id === selectedIds[0]); 
-            p2 = playersMaster.find(x => x.id === selectedIds[1]) || ejectedPlayers.find(x => x.id === selectedIds[1]);
+    function executeBloodReturn(resId) {
+        const res = reservations.find(r => r.id === resId);
+        const fPos = fieldPositions.find(p => p.posId === res.posId);
+        const currentIn = fPos.player;
+        const bIdx = benchPlayers.findIndex(p => p.id === res.out.id);
+        if (res.subType === '復帰') {
+            fPos.player = {...res.out, status: 'normal'};
+            if (bIdx !== -1) benchPlayers[bIdx] = {...currentIn, status: 'normal'};
         } else {
-            p1 = playersMaster.find(x => x.id === selectedIds[0]) || ejectedPlayers.find(x => x.id === selectedIds[0]);
-            let p1Idx = playersMaster.findIndex(x => x.id === selectedIds[0]);
-            if (p1Idx === -1) { const ep = ejectedPlayers.find(x => x.id === selectedIds[0]); if (ep) p1Idx = ep.originalPos - 1; }
+            if (bIdx !== -1) benchPlayers[bIdx].status = (res.subType === '戦術' ? 'tactical' : 'injury');
+        }
+        addLog(`出血復帰(${res.subType})`, res.out, res.in);
+        reservations = reservations.filter(r => r.id !== resId);
+        render();
+    }
 
-            if (!['YC', 'RC', 'OFR', '負傷交代'].includes(type) && p1Idx !== -1 && p1Idx < 15) {
-                if (!confirm(`${type}として予約リストに追加しますか？`)) return;
-                addReservationCard(type + "（退出）", p1, null);
-                clearSelection(); return;
+    function moveToAdminCard(resId, cardType) {
+        const res = reservations.find(r => r.id === resId);
+        const now = new Date();
+        adminCards.push({
+            id: Date.now(), type: cardType, gameTime: getFormattedTime(), pcTime: `${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`,
+            out: {...res.out}, posId: res.posId, totalSeconds: cardType === 'YC' ? 600 : (cardType === 'RC' ? 1200 : 0), remainingSeconds: cardType === 'YC' ? 600 : (cardType === 'RC' ? 1200 : 0), execRealTimestamp: Date.now()
+        });
+        benchPlayers.push({...res.out, status: cardType.toLowerCase()});
+        fieldPositions.find(p => p.posId === res.posId).player = null;
+        addLog(cardType, res.out);
+        reservations = reservations.filter(r => r.id !== resId);
+        render();
+    }
+
+    function executeReturn(resId) {
+        const res = reservations.find(r => r.id === resId);
+        benchPlayers = benchPlayers.filter(p => !(p.id === res.in.id && ['yc','rc','ofr'].includes(p.status)));
+        fieldPositions.find(p => p.posId === res.posId).player = {...res.in, status: 'normal'};
+        addLog(`${res.cardType}復帰`, res.in);
+        reservations = reservations.filter(r => r.id !== resId);
+        render();
+    }
+
+    function renderAdminCards() {
+        const list = document.getElementById('admin-list'); list.innerHTML = '';
+        adminCards.forEach(card => {
+            const div = document.createElement('div'); div.className = 'admin-card';
+            const m = Math.floor(card.remainingSeconds / 60), s = card.remainingSeconds % 60;
+            if (card.type === 'BLOOD') {
+                div.innerHTML = `<button class="btn-delete" onclick="adminDelete(${card.id})">×</button><div class="res-header"><span>${card.bloodType}</span><span class="timer-remaining">${m}:${s.toString().padStart(2,'0')}</span></div><div class="res-player-line" style="font-size:0.85rem">OUT: #${card.out.no} / IN: #${card.in.no}</div><div class="res-actions"><button onclick="bloodToReserve(${card.id}, '復帰')">復帰</button><button onclick="bloodToReserve(${card.id}, '戦術')">戦術</button><button onclick="bloodToReserve(${card.id}, '負傷')">負傷</button></div>`;
+            } else {
+                div.innerHTML = `<button class="btn-delete" onclick="adminDelete(${card.id})">×</button><div class="res-header"><span>${card.type}</span><span class="timer-remaining">${m}:${s.toString().padStart(2,'0')}</span></div><div class="res-player-line" style="font-size:0.85rem">OUT: #${card.out.no} ${card.out.name}</div><div class="res-actions" style="grid-template-columns: 1fr 1fr;"><button onclick="adminAction(${card.id}, 'return')">復帰</button><button onclick="adminAction(${card.id}, 'tactical')">戦術</button></div>`;
             }
-            if (type === '負傷交代') { if (!confirm("負傷退場として予約リストに追加しますか？")) return; actionType = '負傷退場'; }
-        }
-
-        if (!validateCatLimit(selectedIds[0], selectedIds[1] || '', actionType)) return;
-
-        let outIdx = playersMaster.findIndex(p => p.id === (p1 ? p1.id : ''));
-        if (outIdx === -1 && p1) { const ep = ejectedPlayers.find(p => p.id === p1.id); if (ep) outIdx = ep.originalPos - 1; }
-
-        if (!['YC', 'RC', 'OFR'].includes(actionType)) {
-            if (outIdx !== -1 && outIdx < 3) {
-                const targetPos = outIdx + 1;
-                const playerEnteringFront = p2;
-                if (playerEnteringFront && playerEnteringFront.id !== 'empty') { if (!playerEnteringFront.fr.includes(targetPos.toString())) { if (!confirm(`No${playerEnteringFront.no}はFR${targetPos}の適正がありません。アンコンテスト・スクラムになりますがよろしいですか？`)) return; } } 
-                else if (actionType === '負傷退場') { if (!confirm(`フロントロー(ポジション${targetPos})が退場します。補充がないためアンコンテスト・スクラムになりますがよろしいですか？`)) return; }
-            }
-        } else {
-            if (outIdx !== -1 && outIdx < 3) { if (!confirm(`フロントロー(ポジション${outIdx+1})が一時退場します。補充がない場合はアンコンテスト・スクラムになりますがよろしいですか？`)) return; }
-        }
-        addReservationCard(actionType, p1, p2); clearSelection();
-    }
-
-    function formatTimerStr(totalSeconds) {
-        const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0'), s = (totalSeconds % 60).toString().padStart(2, '0');
-        return `${m}:${s}`;
-    }
-
-    function addReservationCard(type, outP, inP, mid = null) {
-        const resList = document.getElementById('reservation-list'), rid = mid || Date.now();
-        const card = document.createElement('div'); card.className = 'reserve-card'; card.id = `res-${rid}`;
-        card.dataset.outId = outP ? outP.id : ''; card.dataset.inId = inP ? inP.id : '';
-        let displayType = type.replace('交代','').replace('確定',''), 
-            outText = outP ? (outP.id === 'empty' ? 'OUT 空白' : `OUT No${outP.no} ${outP.name}`) : 'OUT ---', 
-            inText = inP ? (inP.id === 'empty' ? 'IN&nbsp;&nbsp;空白' : `IN&nbsp;&nbsp;No${inP.no} ${inP.name}`) : 'IN&nbsp;&nbsp;空白';
-        
-        card.innerHTML = `<div class="reserve-remaining" id="res-timer-${rid}"></div><div class="reserve-info"><div style="color:var(--btn-green); font-weight:bold;">【${displayType}】 待機中...</div><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${outText}</div><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${inText}</div></div><div class="reserve-btns"><button class="btn-reserve-exe" onclick="handleReserveExe('${type}', '${outP?outP.id:''}', '${inP?inP.id:''}', ${rid})">実行</button><button class="btn-reserve-del" onclick="removeReservationCard(${rid})">削除</button></div>`;
-        resList.prepend(card);
-        if (mid && managementSeconds[mid] !== undefined) { const el = document.getElementById(`res-timer-${rid}`); if (el) el.innerText = formatTimerStr(managementSeconds[rid]); }
-    }
-
-    function removeReservationCard(rid) { 
-        if (confirm("この予約を削除してもよろしいですか？")) {
-            if (managementTimers[rid]) { clearInterval(managementTimers[rid]); delete managementTimers[rid]; delete managementSeconds[rid]; }
-            const card = document.getElementById(`res-${rid}`); if(card) card.remove();
-        }
-    }
-
-    function handleReserveExe(type, outId, inId, rid) {
-        if (type.includes('確定')) {
-            const outP = playersMaster.find(x => x.id === outId) || ejectedPlayers.find(x => x.id === outId);
-            const inP = playersMaster.find(x => x.id === inId) || ejectedPlayers.find(x => x.id === inId);
-            if (outP && outP.id !== 'empty') { if (type.includes('戦術')) outP.status = 'tactical-out'; if (type.includes('負傷')) outP.status = 'injured-out'; if (type.includes('復帰')) outP.status = 'normal'; addLog(type.replace('確定',''), outP, inP); }
-            if (managementTimers[rid]) { clearInterval(managementTimers[rid]); delete managementTimers[rid]; delete managementSeconds[rid]; }
-            renderLists(); const card = document.getElementById(`res-${rid}`); if(card) card.remove(); checkFRConditions(); return;
-        }
-
-        let outIdx = playersMaster.findIndex(p => p.id === outId);
-        let outP = outIdx !== -1 ? playersMaster[outIdx] : ejectedPlayers.find(p => p.id === outId);
-
-        if (type.includes('（退出）')) {
-            const originType = type.replace('（退出）','');
-            const posNum = outIdx + 1;
-            outP.status = 'status-treating';
-            ejectedPlayers.push({...outP, originalPos: posNum});
-            playersMaster[outIdx] = { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-            addLog(originType + "（退出）", outP, null);
-            createManagementCard(originType, outP, null, posNum, rid);
-            const card = document.getElementById(`res-${rid}`); if(card) card.remove();
-            renderLists(); checkFRConditions(); return;
-        }
-
-        if (type === 'YC' || type === 'RC' || type === 'OFR') {
-            const posNum = outIdx + 1; addPenaltyLog(type, outP, ""); addLog(type, outP, null, "");
-            ejectedPlayers.push({...outP, originalPos: posNum}); playersMaster[outIdx] = { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-            createManagementCard(type, outP, null, posNum, rid); const card = document.getElementById(`res-${rid}`); if(card) card.remove(); renderLists(); checkFRConditions();
-        } else if (type === '負傷退場') {
-            if (outIdx !== -1) { 
-                const posNum = outIdx + 1; outP.status = 'injured-out'; 
-                ejectedPlayers.push({...outP, originalPos: posNum}); 
-                playersMaster[outIdx] = { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' }; 
-                addLog("負傷退場", outP, null); 
-            } else if (outP) { outP.status = 'injured-out'; addLog("負傷退場", outP, null); }
-            if (managementTimers[rid]) { clearInterval(managementTimers[rid]); delete managementTimers[rid]; delete managementSeconds[rid]; }
-            const card = document.getElementById(`res-${rid}`); if(card) card.remove(); renderLists(); checkFRConditions();
-        } else { executeSwap(type, outId, inId, rid); }
-    }
-
-    function checkFRConditions() {
-        const p1 = playersMaster[0], p2 = playersMaster[1], p3 = playersMaster[2];
-        let warning = false;
-        if ((!p1.fr.includes("1") && p1.id !== 'empty') || p1.id === 'empty') warning = true;
-        if ((!p2.fr.includes("2") && p2.id !== 'empty') || p2.id === 'empty') warning = true;
-        if ((!p3.fr.includes("3") && p3.id !== 'empty') || p3.id === 'empty') warning = true;
-        if (warning) { isUncontested = true; document.getElementById('uncontested-banner').style.display = 'block'; }
-        else { isUncontested = false; document.getElementById('uncontested-banner').style.display = 'none'; }
-    }
-
-    function executeSwap(type, outId, inId, rid) {
-        let outIdx = playersMaster.findIndex(p => p.id === outId);
-        let inIdx = playersMaster.findIndex(p => p.id === inId);
-        
-        if (outIdx === -1) {
-            const ejectedP = ejectedPlayers.find(p => p.id === outId);
-            if (ejectedP) {
-                const originalPos = ejectedP.originalPos; const pIn = playersMaster[inIdx]; const pOut = ejectedP;
-                if (type.includes('戦術')) pOut.status = 'tactical-out'; else if (type.includes('負傷')) pOut.status = 'injured-out';
-                if (inIdx !== -1) playersMaster[inIdx] = pOut; addLog(type, pOut, pIn);
-            }
-        } else if (outIdx !== -1 && inIdx !== -1) {
-            const pOut = playersMaster[outIdx], pIn = playersMaster[inIdx];
-            if (type === 'SWAP') { pIn.status = 'normal'; pOut.status = 'normal'; }
-            else if (!type.includes('（')) {
-                if (type.includes('戦術') && pOut.id !== 'empty') pOut.status = 'tactical-out';
-                else if (type.includes('負傷') && pOut.id !== 'empty') pOut.status = 'injured-out';
-                else if (pOut.id !== 'empty') pOut.status = 'status-treating';
-            }
-            playersMaster[outIdx] = pIn; playersMaster[inIdx] = pOut;
-            if (outIdx < 15) playersMaster[outIdx].status = 'normal';
-            if (inIdx < 15 && type === 'SWAP') playersMaster[inIdx].status = 'normal';
-
-            addLog(type, pOut, pIn);
-            if (['出血交代','HIA','出血HIA','一時退出','SWAP'].includes(type) && !type.includes('（')) { createManagementCard(type, pOut, pIn, outIdx + 1, rid); }
-        }
-        if (managementTimers[rid]) { clearInterval(managementTimers[rid]); delete managementTimers[rid]; delete managementSeconds[rid]; }
-        renderLists(); const card = document.getElementById(`res-${rid}`); if(card) card.remove(); checkFRConditions();
-    }
-
-    function createManagementCard(type, outP, inP, posNum, oldRid = null) {
-        const mList = document.getElementById('management-list'), mid = oldRid || Date.now();
-        const gameTime = document.getElementById('timer-display').innerText, pcTime = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-        const card = document.createElement('div'); card.className = 'mgt-card'; card.id = `mgt-${mid}`;
-        card.dataset.outId = outP ? outP.id : ''; card.dataset.inId = inP ? inP.id : ''; card.dataset.originType = type; card.dataset.posNum = posNum || ''; card.dataset.startTimeStr = gameTime;
-        let reasonHtml = (type === 'YC' || type === 'RC' || type === 'OFR') ? `<input type="text" class="mgt-reason-input" id="reason-${mid}" placeholder="理由を入力...">` : '';
-        let statusBtns = '';
-        if (type === 'OFR') { statusBtns = `<button id="btn-yellow-${mid}" class="active-yellow" onclick="selectOFRDecision(${mid}, 'YELLOW')">YELLOW</button><button id="btn-red-${mid}" onclick="selectOFRDecision(${mid}, 'RED')">RED</button><button id="btn-decision-exe-${mid}" class="btn-decision-exe" onclick="confirmOFRDecision(${mid})">判定</button><div id="ofr-sub-btns-${mid}" style="display:none; width:100%; gap:4px; margin-top:8px;"></div>`; }
-        else if (type === 'RC') { statusBtns = `<button id="btn-koutai-${mid}" class="active-normal" onclick="toggleMgtStatus(${mid}, '交代')">交代</button>`; }
-        else if (type === 'SWAP') { statusBtns = `<button id="btn-fukki-${mid}" class="active-normal" style="display:none;" onclick="toggleMgtStatus(${mid}, '復帰')">復帰</button>`; }
-        else { statusBtns = `<button id="btn-fukki-${mid}" class="active-normal" onclick="toggleMgtStatus(${mid}, '復帰')">復帰</button><button id="btn-senshu-${mid}" onclick="toggleMgtStatus(${mid}, '戦術')">戦術</button><button id="btn-fujou-${mid}" onclick="toggleMgtStatus(${mid}, '負傷')">負傷</button>`; }
-        let initialSeconds = (type === 'YC') ? 600 : (type === 'RC' ? 1200 : (type === 'HIA' ? 720 : (type === '出血HIA' ? 1020 : (type === 'OFR' ? 600 : 900)))), timerDisplayAttr = (type === 'SWAP') ? 'style="display:none;"' : '';
-        card.innerHTML = `<div class="mgt-header"><div class="mgt-type">【${type}】${gameTime} [${pcTime}]</div><div class="mgt-timer" id="timer-${mid}" ${timerDisplayAttr}>00:00</div></div><div class="mgt-player-info" id="mgt-info-${mid}"></div>${reasonHtml}<div class="mgt-btns-row"><div class="mgt-status-btns" id="status-btns-container-${mid}">${statusBtns}</div><div class="mgt-action-btns"><button class="btn-mgt-exe" onclick="executeMgtReturn(${mid})">実行（予約へ）</button><button class="btn-mgt-del" onclick="removeMgtCard(${mid})">削除</button></div></div>`;
-        mList.prepend(card);
-        if (['出血交代','HIA','出血HIA','一時退出','SWAP'].includes(type)) startIndependentMgtTimer(mid, initialSeconds); else startLinkedMgtTimer(mid, initialSeconds); updateMgtDisplay(mid);
-    }
-
-    function selectOFRDecision(mid, decision) {
-        const btnY = document.getElementById(`btn-yellow-${mid}`), btnR = document.getElementById(`btn-red-${mid}`);
-        if ((decision === 'YELLOW' && btnY.classList.contains('active-yellow')) || (decision === 'RED' && btnR.classList.contains('active-red'))) return;
-        const isIndependent = ['出血交代','HIA','出血HIA','一時退出','SWAP'].includes(document.getElementById(`mgt-${mid}`).dataset.originType);
-        if (managementTimers[mid]) { clearInterval(managementTimers[mid]); managementTimers[mid] = null; }
-        btnY.classList.remove('active-yellow', 'active-red', 'active-normal'); btnR.classList.remove('active-yellow', 'active-red', 'active-normal');
-        if (decision === 'RED') { btnR.classList.add('active-red'); managementSeconds[mid] += 600; }
-        else { btnY.classList.add('active-yellow'); managementSeconds[mid] = Math.max(0, managementSeconds[mid] - 600); }
-        if (isIndependent) startIndependentMgtTimer(mid, managementSeconds[mid]); else startLinkedMgtTimer(mid, managementSeconds[mid]);
-    }
-
-    function confirmOFRDecision(mid) {
-        const card = document.getElementById(`mgt-${mid}`), btnY = document.getElementById(`btn-yellow-${mid}`), sub = document.getElementById(`ofr-sub-btns-${mid}`);
-        const decision = btnY.classList.contains('active-yellow') ? 'YELLOW' : 'RED', reason = document.getElementById(`reason-${mid}`) ? document.getElementById(`reason-${mid}`).value : "", outP = ejectedPlayers.find(p => p.id === card.dataset.outId);
-        addPenaltyLog(`OFR(${decision})`, outP, reason); sub.style.display = 'flex'; sub.style.flexWrap = 'wrap';
-        if(decision === 'YELLOW') { sub.innerHTML = `<button id="btn-fukki-${mid}" onclick="toggleMgtStatus(${mid}, '復帰')">復帰</button><button id="btn-senshu-${mid}" onclick="toggleMgtStatus(${mid}, '戦術')">戦術</button><button id="btn-fujou-${mid}" onclick="toggleMgtStatus(${mid}, '負傷')">負傷</button>`; }
-        else { sub.innerHTML = `<button id="btn-koutai-${mid}" class="active-normal" onclick="toggleMgtStatus(${mid}, '交代')">交代</button>`; toggleMgtStatus(mid, '交代'); }
-        card.dataset.finalDecision = decision;
-    }
-
-    function toggleMgtStatus(mid, status) {
-        const card = document.getElementById(`mgt-${mid}`), originType = card.dataset.originType, btns = document.querySelectorAll(`#ofr-sub-btns-${mid} button, #status-btns-container-${mid} > button`);
-        btns.forEach(b => b.classList.remove('active-normal'));
-        const targetBtnId = status === '復帰' ? 'fukki' : (status === '戦術' ? 'senshu' : (status === '負傷' ? 'fujou' : 'koutai')), targetBtn = document.getElementById(`btn-${targetBtnId}-${mid}`);
-        if(targetBtn) targetBtn.classList.add('active-normal');
-        
-        if (['出血交代','HIA','出血HIA','一時退出'].includes(originType)) {
-            const posNum = parseInt(card.dataset.posNum);
-            if (!isNaN(posNum) && posNum >= 1 && posNum <= 15) {
-                const currentPlayerOnField = playersMaster[posNum - 1]; if (currentPlayerOnField && currentPlayerOnField.id !== 'empty') card.dataset.inId = currentPlayerOnField.id;
-            }
-        }
-        if ((status === '交代' || status === '戦術' || status === '負傷') && (originType === 'YC' || originType === 'RC' || originType === 'OFR')) openPlayerSelectModal(mid, status); else updateMgtDisplay(mid);
-    }
-
-    function updateMgtDisplay(mid) {
-        const card = document.getElementById(`mgt-${mid}`), originType = card.dataset.originType;
-        const outP = (originType === 'YC' || originType === 'RC' || originType === 'OFR' || (!card.dataset.inId && card.dataset.outId)) ? ejectedPlayers.find(x => x.id === card.dataset.outId) : playersMaster.find(x => x.id === card.dataset.outId);
-        const inP = playersMaster.find(x => x.id === card.dataset.inId), infoDiv = document.getElementById(`mgt-info-${mid}`), activeSubBtn = document.querySelector(`#ofr-sub-btns-${mid} button.active-normal`)?.innerText || document.querySelector(`#status-btns-container-${mid} > button.active-normal`)?.innerText || "";
-        
-        let outName = outP ? (outP.id === 'empty' ? '空白' : `No${outP.no} ${outP.name}`) : '---', inName = inP ? (inP.id === 'empty' ? '空白' : `No${inP.no} ${inP.name}`) : '空白';
-        let outStyle = "color:black;", inStyle = "color:black;";
-        
-        if (originType === 'YC' || originType === 'RC' || originType === 'OFR' || (!card.dataset.inId && card.dataset.outId)) { infoDiv.innerHTML = `<div style="${outStyle}">OUT ${outName}</div><div style="${inStyle}">IN&nbsp;&nbsp;${inName}</div>`; } 
-        else { if (activeSubBtn === '復帰') { infoDiv.innerHTML = `<div style="${outStyle}">OUT ${inName}</div><div style="${inStyle}">IN&nbsp;&nbsp;${outName}</div>`; } else { infoDiv.innerHTML = `<div style="${outStyle}">OUT ${outName}</div><div style="${inStyle}">IN&nbsp;&nbsp;${inName}</div>`; } }
-    }
-
-    function executeMgtReturn(mid) {
-        const card = document.getElementById(`mgt-${mid}`), originType = card.dataset.originType, originalPId = card.dataset.outId, tempPId = card.dataset.inId, activeSubBtnElem = document.querySelector(`#ofr-sub-btns-${mid} button.active-normal`) || document.querySelector(`#status-btns-container-${mid} > button.active-normal`);
-        if (originType === 'OFR' && !card.dataset.finalDecision) return alert("裁定を確定させてください");
-        if (!activeSubBtnElem) return alert("ステータスを選択してください");
-        let activeBtn = activeSubBtnElem.innerText, reason = document.getElementById(`reason-${mid}`)?.value || "", finalType = originType === 'OFR' ? `OFR(${card.dataset.finalDecision})` : originType;
-        
-        const inP = playersMaster.find(x => x.id === tempPId), cardOwner = ejectedPlayers.find(x => x.id === originalPId), posNum = card.dataset.posNum;
-        if (originType === 'YC' || originType === 'RC' || originType === 'OFR' || (!tempPId && originalPId)) {
-             if (activeBtn === '復帰') addReservationCardWithPos(`${finalType}（復帰）`, inP, cardOwner, posNum, reason, mid); else addReservationCardWithPos(`${finalType}（${activeBtn}）`, cardOwner, inP, posNum, reason, mid);
-        } else {
-             const originalP = playersMaster.find(x => x.id === originalPId) || ejectedPlayers.find(x => x.id === originalPId), tempP = playersMaster.find(x => x.id === tempPId);
-             if (activeBtn === '復帰') addReservationCard(`${originType}（復帰）`, tempP, originalP, mid); else addReservationCard(`${originType}（${activeBtn}確定）`, originalP, tempP, mid);
-        }
-        card.remove(); 
-    }
-
-    function addReservationCardWithPos(type, outP, inP, pos, reason, mid) {
-        const resList = document.getElementById('reservation-list'), rid = mid;
-        const card = document.createElement('div'); card.className = 'reserve-card'; card.id = `res-${rid}`;
-        card.dataset.outId = outP ? outP.id : ''; card.dataset.inId = inP ? inP.id : '';
-        let outText = outP ? (outP.id === 'empty' ? 'OUT 空白' : `OUT No${outP.no} ${outP.name}`) : 'OUT 空白', inText = inP ? (inP.id === 'empty' ? 'IN&nbsp;&nbsp;空白' : `IN&nbsp;&nbsp;No${inP.no} ${inP.name}`) : 'IN&nbsp;&nbsp;空白';
-        card.innerHTML = `<div class="reserve-remaining" id="res-timer-${rid}"></div><div class="reserve-info"><div style="color:var(--btn-green); font-weight:bold;">【${type.replace('確定','')}】 待機中...</div>${reason ? `<div style="font-size:10px; color:var(--btn-red);">理由: ${reason}</div>` : ''}<div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${outText}</div><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${inText}</div></div><div class="reserve-btns"><button class="btn-reserve-exe" onclick="executeFinalReturn('${type}', '${outId?outId:''}', '${inId?inId:''}', ${rid}, ${pos}, '${reason}')">実行</button><button class="btn-reserve-del" onclick="removeReservationCard(${rid})">削除</button></div>`;
-        resList.prepend(card);
-    }
-
-    function executeFinalReturn(type, outId, inId, rid, pos, reason) {
-        const targetIdx = pos - 1; let pObj = ejectedPlayers.find(p => p.id === (type.includes('復帰') ? inId : outId)), inP = playersMaster.find(p => p.id === inId);
-        if (!inP) inP = { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' };
-        const inIdx = playersMaster.findIndex(p => p.id === inId);
-        if (!validateCatLimit(outId, inId, type)) return;
-        if (pos <= 3) { let playerEnteringFront = type.includes('復帰') ? pObj : inP; if (playerEnteringFront && playerEnteringFront.id !== 'empty' && !playerEnteringFront.fr.includes(pos.toString())) { if (!confirm(`No${playerEnteringFront.no}はFR${pos}の適正がありません。アンコンテスト・スクラムになりますがよろしいですか？`)) return; } }
-        
-        if (type.includes('復帰')) { const outP = playersMaster.find(p => p.id === outId); if(pObj) pObj.status = 'normal'; playersMaster[targetIdx] = pObj || { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' }; ejectedPlayers = ejectedPlayers.filter(p => p.id !== (pObj ? pObj.id : '')); addLog(type, outP, pObj, reason); }
-        else { 
-            playersMaster[targetIdx] = inP; 
-            if(pObj) { 
-                pObj.status = type.includes('戦術') ? 'tactical-out' : 'injured-out';
-                if (type.includes('戦術')) { if(inIdx !== -1) { playersMaster[inIdx] = pObj; } else { let bIdx = playersMaster.findIndex((p, i) => i >= 15 && p.id === 'empty'); if (bIdx !== -1) playersMaster[bIdx] = pObj; } ejectedPlayers = ejectedPlayers.filter(p => p.id !== pObj.id); } 
-                else { if(inIdx !== -1) { playersMaster[inIdx] = { id: 'empty', no: '', name: '-----', cat: '', fr: '', status: 'normal' }; } } 
-            } 
-            addLog(type, pObj, inP, reason); 
-        }
-        if (targetIdx < 15) playersMaster[targetIdx].status = 'normal';
-        if (managementTimers[rid]) { clearInterval(managementTimers[rid]); delete managementTimers[rid]; delete managementSeconds[rid]; }
-        renderLists(); const card = document.getElementById(`res-${rid}`); if(card) card.remove(); checkFRConditions();
-    }
-
-    function addPenaltyLog(type, p, reason) {
-        const gt = document.getElementById('timer-display').innerText, pt = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }), logId = 'plog-' + Date.now(), div = document.createElement('div');
-        div.className = (type === 'YC' || type.includes('OFR(YELLOW)')) ? 'log-entry yc-bg' : (type === 'RC' || type.includes('OFR(RED)') ? 'log-entry rc-bg' : 'log-entry');
-        div.id = logId; let nameLine = p && p.id !== 'empty' ? `No${p.no} ${p.name}` : '空白';
-        div.innerHTML = `<button class="btn-log-del" onclick="removeLogEntry('${logId}')">削除</button><b>【${type}】 ${gt} [${pt}]</b><br>OUT ${nameLine}${reason ? `<br><span style="color:red;">理由: ${reason}</span>` : ''}`;
-        document.getElementById('penalty-log').prepend(div);
-    }
-
-    function renderLists() {
-        const fList = document.getElementById('field-list'), bList = document.getElementById('bench-list'), eList = document.getElementById('ejected-list');
-        fList.innerHTML = ''; bList.innerHTML = ''; eList.innerHTML = '';
-        playersMaster.slice(0, 15).forEach((p, i) => fList.innerHTML += createRow(i + 1, p, 'field'));
-        playersMaster.slice(15, 23).forEach((p, i) => bList.innerHTML += createRow(i + 16, p, 'bench'));
-        ejectedPlayers.forEach(p => eList.innerHTML += createRow(p.originalPos, p, 'ejected'));
-        updateCategoryDisplay();
-    }
-
-    function createRow(pos, p, type) {
-        const isEmpty = p.id === 'empty', s = p.status === 'tactical-out' ? 'status-tactical-out' : (p.status === 'injured-out' ? 'status-injured-out' : (p.status === 'status-treating' ? 'status-treating' : ''));
-        let delBtnHtml = type === 'ejected' ? `<button class="btn-ejected-del" onclick="removeEjectedPlayer(event, '${p.id}')">削除</button>` : '<div></div>';
-        return `<div class="player-row ${s} ${isEmpty?'empty-row':''}" onclick="selectPlayer(this)" data-id="${p.id}">
-            <div class="pos-circle ${type === 'field' ? 'field-circle' : (type === 'ejected' ? 'red-circle' : 'bench-circle')}">${pos}</div>
-            <div class="jersey-no">${p.no ? 'No.' + p.no : ''}</div><div class="player-name">${p.name}</div>
-            <div style="font-size:10px; opacity:0.6; text-align:center;">${p.cat}</div><div class="fr-cond">${p.fr}</div>${delBtnHtml}
-        </div>`;
-    }
-
-    function removeEjectedPlayer(event, pid) { event.stopPropagation(); if (!confirm("この選手を退場リストから削除しますか？")) return; ejectedPlayers = ejectedPlayers.filter(p => p.id !== pid); renderLists(); }
-
-    function openPlayerSelectModal(mid, status) {
-        const modal = document.getElementById('player-select-modal'), list = document.getElementById('modal-player-list');
-        list.innerHTML = ''; modal.style.display = 'flex';
-        const candidates = [...playersMaster.slice(15, 23), ...ejectedPlayers];
-        candidates.forEach(p => {
-            if (p.status === 'injured-out') return; 
-            const isEjected = ejectedPlayers.some(ep => ep.id === p.id), s = p.status === 'tactical-out' ? 'status-tactical-out' : (p.status === 'status-treating' ? 'status-treating' : '');
-            const div = document.createElement('div'); div.className = 'player-row ' + s + (p.id==='empty'?' empty-row':''); div.style.border = "1px solid #eee"; div.style.marginBottom = "2px";
-            div.innerHTML = `<div class="pos-circle ${isEjected ? 'red-circle' : 'bench-circle'}">${isEjected ? p.originalPos : 'B'}</div><div class="jersey-no">${p.no ? 'No.'+p.no : ''}</div><div class="player-name">${p.name}</div><div style="font-size:10px; opacity:0.6; text-align:center;">${p.cat}</div><div class="fr-cond">${p.fr}</div><div></div>`;
-            div.onclick = () => { 
-                const card = document.getElementById(`mgt-${mid}`);
-                if (status === '戦術' || status === '負傷') {
-                    let count = 0, inIdOnField = false;
-                    for (let i = 0; i < 15; i++) { if (playersMaster[i].id === p.id) inIdOnField = true; const cat = (playersMaster[i].cat || '').toUpperCase(); if (['A2','B','C','Ａ２','Ｂ','Ｃ'].includes(cat)) count++; }
-                    if (!inIdOnField) { const inCat = (p.cat || '').toUpperCase(); if (['A2','B','C','Ａ２','Ｂ','Ｃ'].includes(inCat)) count++; }
-                    if (count > categoryLimit) { if (!confirm(`！！！カテゴリー人数オーバー！！！\n\n交代後の対象者(A2+B+C)が${count}名になります（制限: ${categoryLimit}名）。\nこのまま実行（予約）しますか？`)) return; }
-                }
-                card.dataset.inId = p.id; updateMgtDisplay(mid); closeModal(); 
-            }; list.appendChild(div);
+            list.appendChild(div);
         });
     }
 
-    function closeModal() { document.getElementById('player-select-modal').style.display = 'none'; }
-    function startLinkedMgtTimer(mid, durSeconds) { managementSeconds[mid] = durSeconds; updateMgtTimerDisplay(mid, managementSeconds[mid]); managementTimers[mid] = setInterval(() => { if (timerInterval) { managementSeconds[mid]--; updateMgtTimerDisplay(mid, managementSeconds[mid]); if (managementSeconds[mid] <= 0) { clearInterval(managementTimers[mid]); managementTimers[mid] = null; } } }, 1000); }
-    function startIndependentMgtTimer(mid, durSeconds) { managementSeconds[mid] = durSeconds; managementTimers[mid] = setInterval(() => { managementSeconds[mid]--; updateMgtTimerDisplay(mid, managementSeconds[mid]); if (managementSeconds[mid] <= 0) { clearInterval(managementTimers[mid]); managementTimers[mid] = null; } }, 1000); }
-    function updateMgtTimerDisplay(mid, seconds) { const mgtDisplay = document.getElementById(`timer-${mid}`), resDisplay = document.getElementById(`res-timer-${mid}`); if (mgtDisplay) { mgtDisplay.innerText = formatTimerStr(seconds); mgtDisplay.style.color = (seconds <= 0) ? "#888" : "var(--btn-red)"; } if (resDisplay) resDisplay.innerText = formatTimerStr(seconds); }
-    function removeMgtCard(mid) { if (confirm("この管理カードを削除してもよろしいですか？")) { if (managementTimers[mid]) { clearInterval(managementTimers[mid]); delete managementTimers[mid]; delete managementSeconds[mid]; } const card = document.getElementById(`mgt-${mid}`); if(card) card.remove(); } }
-    function addLog(type, outP, inP, reason) {
-        const gt = document.getElementById('timer-display').innerText, pt = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }), logId = 'log-' + Date.now(), div = document.createElement('div');
-        div.className = 'log-entry'; div.id = logId;
-        let displayType = type.replace('交代','').replace('退出',''), outLine = (outP && outP.id !== 'empty') ? `OUT No${outP.no} ${outP.name}` : (outP && outP.id === 'empty' ? 'OUT 空白' : ''), inLine = (inP && inP.id !== 'empty') ? `IN&nbsp;&nbsp;No${inP.no} ${inP.name}` : (inP && inP.id === 'empty' ? 'IN&nbsp;&nbsp;空白' : '');
-        div.innerHTML = `<button class="btn-log-del" onclick="removeLogEntry('${logId}')">削除</button><b>【${displayType}】 ${gt} [${pt}]</b><br>${reason ? `<span style="color:red;">理由: ${reason}</span><br>` : ''}${outLine}${outLine && inLine ? '<br>' : ''}${inLine}`;
-        document.getElementById('main-log').prepend(div);
+    function adminAction(adminId, actionType) {
+        const card = adminCards.find(a => a.id === adminId);
+        if (actionType === 'return') reservations.push({ id: Date.now(), type: 'return', cardType: card.type, posId: card.posId, in: card.out });
+        else reservations.push({ id: Date.now(), type: 'card_sub_waiting', bloodType: card.type, posId: card.posId, out: card.out, in: null });
+        adminCards = adminCards.filter(a => a.id !== adminId);
+        render();
     }
-    function removeLogEntry(id) { if (confirm("このログを削除してもよろしいですか？")) document.getElementById(id)?.remove(); }
-    function toggleTimer() { const btn = document.getElementById('start-btn'); if (timerInterval) { clearInterval(timerInterval); timerInterval = null; btn.innerText = "START"; btn.className = "btn-start-style"; } else { timerInterval = setInterval(() => { seconds++; updateTimerDisplay(); }, 1000); btn.innerText = "STOP"; btn.className = "btn-stop-style"; } }
-    function updateTimerDisplay() { let m = Math.floor(seconds/60).toString().padStart(2,'0'), s = (seconds%60).toString().padStart(2,'0'); document.getElementById('timer-display').innerText = `${m}:${s}`; document.getElementById('edit-min').innerText = m; document.getElementById('edit-sec').innerText = s; }
-    function resetTimer() { if (confirm("タイマーをリセットしてもよろしいですか？")) { seconds = 0; halfEndTime = null; document.getElementById('half-end-time-display').innerText = "--:--"; updateTimerDisplay(); } }
-    function toggleTimerEdit() { const pop = document.getElementById('timer-edit-popup'); pop.style.display = pop.style.display === 'block' ? 'none' : 'block'; if(pop.style.display === 'block') updateTimerDisplay(); }
-    function adjustTime(val) { const oldSeconds = seconds; seconds = Math.max(0, seconds + val); syncMgtTimersWithStopwatch(seconds - oldSeconds); updateTimerDisplay(); }
-    function syncMgtTimersWithStopwatch(diffSeconds) { Object.keys(managementSeconds).forEach(mid => { const card = document.getElementById(`mgt-${mid}`) || document.getElementById(`res-${mid}`); if (card && !['出血交代','HIA','出血HIA','一時退出','SWAP'].includes(card.dataset.originType)) { managementSeconds[mid] = Math.max(0, managementSeconds[mid] - diffSeconds); updateMgtTimerDisplay(mid, managementSeconds[mid]); } }); }
-    function handleExcel(e) { processExcelFile(e.target.files[0]); }
-    function processExcelFile(file) {
-        if (!file) return;
-        const reader = new FileReader(); 
-        reader.onload = (ev) => {
-            const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' }), json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
-            document.getElementById('team-name-display').innerText = json[0] ? json[0][2] : "TEAM"; playersMaster = []; initialMaster = [];
-            for(let j=2; j<25; j++) {
-                const r = json[j] || []; let frs = [];
-                if(r[3] === "TRUE" || r[3] === true) frs.push(1); if(r[4] === "TRUE" || r[4] === true) frs.push(2); if(r[5] === "TRUE" || r[5] === true) frs.push(3);
-                const pObj = { id:'p'+Math.random().toString(36).substr(2,9), no:r[0]||'', name:r[1]||'-----', cat:r[2]||'', fr:frs.length ? `${frs.join(' ')}` : '', status:'normal' };
-                playersMaster.push(pObj); initialMaster.push(JSON.parse(JSON.stringify(pObj)));
-            }
-            renderLists(); checkFRConditions();
-        }; reader.readAsArrayBuffer(file);
+
+    function bloodToReserve(adminId, subType) {
+        const card = adminCards.find(a => a.id === adminId);
+        reservations.push({ id: Date.now(), type: 'blood_return', posId: card.posId, bloodType: card.bloodType, subType: subType, out: card.out, in: card.in });
+        adminCards = adminCards.filter(a => a.id !== adminId);
+        render();
     }
-    const menu = document.getElementById("floating-menu"), handle = document.getElementById("menu-drag-handle");
-    let isDrag = false, ox, oy;
-    handle.onmousedown = (e) => { isDrag = true; ox = e.clientX - menu.offsetLeft; oy = e.clientY - menu.offsetTop; };
-    document.onmousemove = (e) => { if(isDrag){ menu.style.left = (e.clientX-ox)+"px"; menu.style.top = (e.clientY-oy)+"px"; menu.style.margin="0"; }};
-    document.onmouseup = () => isDrag = false;
-    playersMaster = []; for(let i=1; i<=23; i++) playersMaster.push({id:'init'+i, no:'', name:'-----', cat:'', fr:'', status:'normal'});
+
+    function cancelRes(id) { reservations = reservations.filter(r => r.id !== id); render(); }
+    function adminDelete(id) { if(confirm("管理カードを削除しますか？")) { adminCards = adminCards.filter(a => a.id !== id); render(); } }
+    function closePicker() { document.getElementById('modal-overlay').style.display = 'none'; }
+    function updateStats() {
+        const onField = fieldPositions.map(p => p.player).filter(p => p);
+        document.getElementById('count-field').innerText = onField.length;
+        document.getElementById('count-cat-c').innerText = onField.filter(p => p.category.includes('C')).length;
+        document.getElementById('count-fr').innerText = onField.filter(p => p.fr.fr1 || p.fr.fr2 || p.fr.fr3).length;
+        const p1 = fieldPositions.find(p => p.posId === 1)?.player, p2 = fieldPositions.find(p => p.posId === 2)?.player, p3 = fieldPositions.find(p => p.posId === 3)?.player;
+        document.getElementById('uncontested-alert').style.display = (p1?.fr.fr1 && p2?.fr.fr2 && p3?.fr.fr3) ? 'none' : 'block';
+    }
 </script>
 </body>
 </html>
