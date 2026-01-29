@@ -822,7 +822,7 @@
 
     function closeModal() { document.getElementById('player-select-modal').style.display = 'none'; }
     
-    // PC時刻に連動してカウントダウンする独立タイマーの修正
+    // PC時刻に連動してカウントダウンする独立タイマーの修正（表示更新をループに追加）
     function startIndependentMgtTimer(mid, durSeconds) { 
         managementSeconds[mid] = durSeconds; 
         updateMgtTimerDisplay(mid, managementSeconds[mid]); 
@@ -841,10 +841,10 @@
                     managementTimers[mid] = null; 
                 } 
             }
-        }, 100); 
+        }, 200); // 描画のために少し頻度を上げる
     }
 
-    // ストップウォッチ連動タイマーの修正
+    // ストップウォッチ連動タイマー（YC等）
     function startLinkedMgtTimer(mid, durSeconds) { 
         managementSeconds[mid] = durSeconds; 
         updateMgtTimerDisplay(mid, managementSeconds[mid]); 
@@ -863,7 +863,17 @@
         }, 1000); 
     }
 
-    function updateMgtTimerDisplay(mid, seconds) { const mgtDisplay = document.getElementById(`timer-${mid}`), resDisplay = document.getElementById(`res-timer-${mid}`); if (mgtDisplay) { mgtDisplay.innerText = formatTimerStr(seconds); mgtDisplay.style.color = (seconds <= 0) ? "#888" : "var(--btn-red)"; } if (resDisplay) resDisplay.innerText = formatTimerStr(seconds); }
+    function updateMgtTimerDisplay(mid, seconds) { 
+        const mgtDisplay = document.getElementById(`timer-${mid}`);
+        const resDisplay = document.getElementById(`res-timer-${mid}`); 
+        const timeStr = formatTimerStr(seconds);
+        if (mgtDisplay) { 
+            mgtDisplay.innerText = timeStr; 
+            mgtDisplay.style.color = (seconds <= 0) ? "#888" : "var(--btn-red)"; 
+        } 
+        if (resDisplay) resDisplay.innerText = timeStr; 
+    }
+
     function removeMgtCard(mid) { if (confirm("この管理カードを削除してもよろしいですか？")) { if (managementTimers[mid]) { clearInterval(managementTimers[mid]); delete managementTimers[mid]; delete managementSeconds[mid]; } const card = document.getElementById(`mgt-${mid}`); if(card) card.remove(); } }
     function addLog(type, outP, inP, reason) {
         const gt = document.getElementById('timer-display').innerText, pt = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }), logId = 'log-' + Date.now(), div = document.createElement('div');
