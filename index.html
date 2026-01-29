@@ -104,8 +104,9 @@
         .player-row.selected * { color: white !important; }
         .player-row.fr-match { background-color: var(--fr-highlight); }
         
-        .player-row.status-treating { color: #ff0000 !important; }
-        .player-row.status-treating .player-name { color: #ff0000 !important; }
+        /* 出血/HIA等で治療中（OUT）の選手は黒文字（指示通り） */
+        .player-row.status-treating { color: #000000 !important; }
+        .player-row.status-treating .player-name { color: #000000 !important; }
         
         .player-row.status-tactical-out { color: var(--tactical-blue) !important; }
         .player-row.status-tactical-out .player-name { color: var(--tactical-blue) !important; }
@@ -743,7 +744,7 @@
         const card = document.createElement('div'); card.className = 'reserve-card'; card.id = `res-${rid}`;
         card.dataset.outId = outP ? outP.id : ''; card.dataset.inId = inP ? inP.id : '';
         let outText = outP ? (outP.id === 'empty' ? 'OUT 空白' : `OUT No${outP.no} ${outP.name}`) : 'OUT 空白', inText = inP ? (inP.id === 'empty' ? 'IN&nbsp;&nbsp;空白' : `IN&nbsp;&nbsp;No${inP.no} ${inP.name}`) : 'IN&nbsp;&nbsp;空白';
-        card.innerHTML = `<div class="reserve-remaining" id="res-timer-${rid}"></div><div class="reserve-info"><div style="color:var(--btn-green); font-weight:bold;">【${type.replace('確定','')}】 待機中...</div>${reason ? `<div style="font-size:10px; color:var(--btn-red);">理由: ${reason}</div>` : ''}<div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${outText}</div><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${inText}</div></div><div class="reserve-btns"><button class="btn-reserve-exe" onclick="executeFinalReturn('${type}', '${outP?outP.id:''}', '${inP?inP.id:''}', ${rid}, ${pos}, '${reason}')">実行</button><button class="btn-reserve-del" onclick="removeReservationCard(${rid})">削除</button></div>`;
+        card.innerHTML = `<div class="reserve-remaining" id="res-timer-${rid}"></div><div class="reserve-info"><div style="color:var(--btn-green); font-weight:bold;">【${type.replace('確定','')}】 待機中...</div>${reason ? `<div style="font-size:10px; color:var(--btn-red);">理由: ${reason}</div>` : ''}<div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${outText}</div><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${inText}</div></div><div class="reserve-btns"><button class="btn-reserve-exe" onclick="executeFinalReturn('${type}', '${outId?outId:''}', '${inId?inId:''}', ${rid}, ${pos}, '${reason}')">実行</button><button class="btn-reserve-del" onclick="removeReservationCard(${rid})">削除</button></div>`;
         resList.prepend(card);
     }
 
@@ -821,59 +822,9 @@
     }
 
     function closeModal() { document.getElementById('player-select-modal').style.display = 'none'; }
-    
-    // PC時刻に連動してカウントダウンする独立タイマーの修正（表示更新をループに追加）
-    function startIndependentMgtTimer(mid, durSeconds) { 
-        managementSeconds[mid] = durSeconds; 
-        updateMgtTimerDisplay(mid, managementSeconds[mid]); 
-        
-        if (managementTimers[mid]) clearInterval(managementTimers[mid]);
-        
-        let lastTime = Date.now();
-        managementTimers[mid] = setInterval(() => { 
-            let now = Date.now();
-            if (now - lastTime >= 1000) {
-                managementSeconds[mid] = Math.max(0, managementSeconds[mid] - 1); 
-                updateMgtTimerDisplay(mid, managementSeconds[mid]); 
-                lastTime = now;
-                if (managementSeconds[mid] <= 0) { 
-                    clearInterval(managementTimers[mid]); 
-                    managementTimers[mid] = null; 
-                } 
-            }
-        }, 200); // 描画のために少し頻度を上げる
-    }
-
-    // ストップウォッチ連動タイマー（YC等）
-    function startLinkedMgtTimer(mid, durSeconds) { 
-        managementSeconds[mid] = durSeconds; 
-        updateMgtTimerDisplay(mid, managementSeconds[mid]); 
-        
-        if (managementTimers[mid]) clearInterval(managementTimers[mid]);
-        
-        managementTimers[mid] = setInterval(() => { 
-            if (timerInterval) { 
-                managementSeconds[mid] = Math.max(0, managementSeconds[mid] - 1); 
-                updateMgtTimerDisplay(mid, managementSeconds[mid]); 
-                if (managementSeconds[mid] <= 0) { 
-                    clearInterval(managementTimers[mid]); 
-                    managementTimers[mid] = null; 
-                } 
-            } 
-        }, 1000); 
-    }
-
-    function updateMgtTimerDisplay(mid, seconds) { 
-        const mgtDisplay = document.getElementById(`timer-${mid}`);
-        const resDisplay = document.getElementById(`res-timer-${mid}`); 
-        const timeStr = formatTimerStr(seconds);
-        if (mgtDisplay) { 
-            mgtDisplay.innerText = timeStr; 
-            mgtDisplay.style.color = (seconds <= 0) ? "#888" : "var(--btn-red)"; 
-        } 
-        if (resDisplay) resDisplay.innerText = timeStr; 
-    }
-
+    function startLinkedMgtTimer(mid, durSeconds) { managementSeconds[mid] = durSeconds; updateMgtTimerDisplay(mid, managementSeconds[mid]); managementTimers[mid] = setInterval(() => { if (timerInterval) { managementSeconds[mid]--; updateMgtTimerDisplay(mid, managementSeconds[mid]); if (managementSeconds[mid] <= 0) { clearInterval(managementTimers[mid]); managementTimers[mid] = null; } } }, 1000); }
+    function startIndependentMgtTimer(mid, durSeconds) { managementSeconds[mid] = durSeconds; managementTimers[mid] = setInterval(() => { managementSeconds[mid]--; updateMgtTimerDisplay(mid, managementSeconds[mid]); if (managementSeconds[mid] <= 0) { clearInterval(managementTimers[mid]); managementTimers[mid] = null; } }, 1000); }
+    function updateMgtTimerDisplay(mid, seconds) { const mgtDisplay = document.getElementById(`timer-${mid}`), resDisplay = document.getElementById(`res-timer-${mid}`); if (mgtDisplay) { mgtDisplay.innerText = formatTimerStr(seconds); mgtDisplay.style.color = (seconds <= 0) ? "#888" : "var(--btn-red)"; } if (resDisplay) resDisplay.innerText = formatTimerStr(seconds); }
     function removeMgtCard(mid) { if (confirm("この管理カードを削除してもよろしいですか？")) { if (managementTimers[mid]) { clearInterval(managementTimers[mid]); delete managementTimers[mid]; delete managementSeconds[mid]; } const card = document.getElementById(`mgt-${mid}`); if(card) card.remove(); } }
     function addLog(type, outP, inP, reason) {
         const gt = document.getElementById('timer-display').innerText, pt = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }), logId = 'log-' + Date.now(), div = document.createElement('div');
