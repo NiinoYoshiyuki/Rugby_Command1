@@ -821,8 +821,48 @@
     }
 
     function closeModal() { document.getElementById('player-select-modal').style.display = 'none'; }
-    function startLinkedMgtTimer(mid, durSeconds) { managementSeconds[mid] = durSeconds; updateMgtTimerDisplay(mid, managementSeconds[mid]); managementTimers[mid] = setInterval(() => { if (timerInterval) { managementSeconds[mid]--; updateMgtTimerDisplay(mid, managementSeconds[mid]); if (managementSeconds[mid] <= 0) { clearInterval(managementTimers[mid]); managementTimers[mid] = null; } } }, 1000); }
-    function startIndependentMgtTimer(mid, durSeconds) { managementSeconds[mid] = durSeconds; updateMgtTimerDisplay(mid, managementSeconds[mid]); managementTimers[mid] = setInterval(() => { managementSeconds[mid]--; updateMgtTimerDisplay(mid, managementSeconds[mid]); if (managementSeconds[mid] <= 0) { clearInterval(managementTimers[mid]); managementTimers[mid] = null; } }, 1000); }
+    
+    // PC時刻に連動してカウントダウンする独立タイマーの修正
+    function startIndependentMgtTimer(mid, durSeconds) { 
+        managementSeconds[mid] = durSeconds; 
+        updateMgtTimerDisplay(mid, managementSeconds[mid]); 
+        
+        if (managementTimers[mid]) clearInterval(managementTimers[mid]);
+        
+        let lastTime = Date.now();
+        managementTimers[mid] = setInterval(() => { 
+            let now = Date.now();
+            if (now - lastTime >= 1000) {
+                managementSeconds[mid] = Math.max(0, managementSeconds[mid] - 1); 
+                updateMgtTimerDisplay(mid, managementSeconds[mid]); 
+                lastTime = now;
+                if (managementSeconds[mid] <= 0) { 
+                    clearInterval(managementTimers[mid]); 
+                    managementTimers[mid] = null; 
+                } 
+            }
+        }, 100); 
+    }
+
+    // ストップウォッチ連動タイマーの修正
+    function startLinkedMgtTimer(mid, durSeconds) { 
+        managementSeconds[mid] = durSeconds; 
+        updateMgtTimerDisplay(mid, managementSeconds[mid]); 
+        
+        if (managementTimers[mid]) clearInterval(managementTimers[mid]);
+        
+        managementTimers[mid] = setInterval(() => { 
+            if (timerInterval) { 
+                managementSeconds[mid] = Math.max(0, managementSeconds[mid] - 1); 
+                updateMgtTimerDisplay(mid, managementSeconds[mid]); 
+                if (managementSeconds[mid] <= 0) { 
+                    clearInterval(managementTimers[mid]); 
+                    managementTimers[mid] = null; 
+                } 
+            } 
+        }, 1000); 
+    }
+
     function updateMgtTimerDisplay(mid, seconds) { const mgtDisplay = document.getElementById(`timer-${mid}`), resDisplay = document.getElementById(`res-timer-${mid}`); if (mgtDisplay) { mgtDisplay.innerText = formatTimerStr(seconds); mgtDisplay.style.color = (seconds <= 0) ? "#888" : "var(--btn-red)"; } if (resDisplay) resDisplay.innerText = formatTimerStr(seconds); }
     function removeMgtCard(mid) { if (confirm("この管理カードを削除してもよろしいですか？")) { if (managementTimers[mid]) { clearInterval(managementTimers[mid]); delete managementTimers[mid]; delete managementSeconds[mid]; } const card = document.getElementById(`mgt-${mid}`); if(card) card.remove(); } }
     function addLog(type, outP, inP, reason) {
