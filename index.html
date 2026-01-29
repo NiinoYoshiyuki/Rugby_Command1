@@ -104,7 +104,6 @@
         .player-row.selected * { color: white !important; }
         .player-row.fr-match { background-color: var(--fr-highlight); }
         
-        /* 一時退出中(出血/HIA等)は黒文字に戻す（指示通り） */
         .player-row.status-treating { color: #000000 !important; }
         .player-row.status-treating .player-name { color: #000000 !important; }
         
@@ -323,6 +322,57 @@
 
     function openMenu() { document.getElementById('floating-menu').style.display = 'block'; }
     function closeMenu() { document.getElementById('floating-menu').style.display = 'none'; }
+
+    function toggleTimer() {
+        const btn = document.getElementById('start-btn');
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            btn.innerText = 'START';
+            btn.className = 'btn-start-style';
+        } else {
+            timerInterval = setInterval(() => {
+                seconds++;
+                updateTimerDisplay();
+            }, 1000);
+            btn.innerText = 'STOP';
+            btn.className = 'btn-stop-style';
+        }
+    }
+
+    function resetTimer() {
+        if (confirm("タイマーをリセットしますか？")) {
+            if (timerInterval) toggleTimer();
+            seconds = 0;
+            updateTimerDisplay();
+        }
+    }
+
+    function updateTimerDisplay() {
+        document.getElementById('timer-display').innerText = formatTimerStr(seconds);
+    }
+
+    function toggleTimerEdit() {
+        const popup = document.getElementById('timer-edit-popup');
+        if (popup.style.display === 'block') {
+            popup.style.display = 'none';
+        } else {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            document.getElementById('edit-min').innerText = m.toString().padStart(2, '0');
+            document.getElementById('edit-sec').innerText = s.toString().padStart(2, '0');
+            popup.style.display = 'block';
+        }
+    }
+
+    function adjustTime(val) {
+        seconds = Math.max(0, seconds + val);
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        document.getElementById('edit-min').innerText = m.toString().padStart(2, '0');
+        document.getElementById('edit-sec').innerText = s.toString().padStart(2, '0');
+        updateTimerDisplay();
+    }
 
     function openCatModal() { 
         document.getElementById('cat-limit-display').innerText = categoryLimit; 
@@ -770,6 +820,22 @@
         renderLists(); const card = document.getElementById(`res-${rid}`); if(card) card.remove(); checkFRConditions();
     }
 
+    function addLog(type, pOut, pIn, note = "") {
+        const log = document.getElementById('main-log');
+        const gt = document.getElementById('timer-display').innerText;
+        const pt = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        const logId = 'log-' + Date.now();
+        entry.id = logId;
+        
+        let outText = pOut && pOut.id !== 'empty' ? `No${pOut.no} ${pOut.name}` : '---';
+        let inText = pIn && pIn.id !== 'empty' ? `No${pIn.no} ${pIn.name}` : '---';
+        
+        entry.innerHTML = `<button class="btn-log-del" onclick="removeLogEntry('${logId}')">削除</button><b>【${type}】 ${gt} [${pt}]</b><br>OUT: ${outText} / IN: ${inText}${note ? `<br><small>${note}</small>` : ''}`;
+        log.prepend(entry);
+    }
+
     function addPenaltyLog(type, p, reason) {
         const gt = document.getElementById('timer-display').innerText, pt = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }), logId = 'plog-' + Date.now(), div = document.createElement('div');
         div.className = (type === 'YC' || type.includes('OFR(YELLOW)')) ? 'log-entry yc-bg' : (type === 'RC' || type.includes('OFR(RED)') ? 'log-entry rc-bg' : 'log-entry');
@@ -777,6 +843,8 @@
         div.innerHTML = `<button class="btn-log-del" onclick="removeLogEntry('${logId}')">削除</button><b>【${type}】 ${gt} [${pt}]</b><br>OUT ${nameLine}${reason ? `<br><span style="color:red;">理由: ${reason}</span>` : ''}`;
         document.getElementById('penalty-log').prepend(div);
     }
+
+    function removeLogEntry(id) { if (confirm("このログを削除しますか？")) document.getElementById(id)?.remove(); }
 
     function renderLists() {
         const fList = document.getElementById('field-list'), bList = document.getElementById('bench-list'), eList = document.getElementById('ejected-list');
@@ -822,21 +890,48 @@
     }
 
     function closeModal() { document.getElementById('player-select-modal').style.display = 'none'; }
-    function startLinkedMgtTimer(mid, durSeconds) { managementSeconds[mid] = durSeconds; updateMgtTimerDisplay(mid, managementSeconds[mid]); managementTimers[mid] = setInterval(() => { if (timerInterval) { managementSeconds[mid]--; updateMgtTimerDisplay(mid, managementSeconds[mid]); if (managementSeconds[mid] <= 0) { clearInterval(managementTimers[mid]); managementTimers[mid] = null; } } }, 1000); }
+    
+    function startLinkedMgtTimer(mid, durSeconds) { 
+        managementSeconds[mid] = durSeconds; 
+        updateMgtTimerDisplay(mid, managementSeconds[mid]); 
+        managementTimers[mid] = setInterval(() => { 
+            if (timerInterval) { 
+                managementSeconds[mid]--; 
+                updateMgtTimerDisplay(mid, managementSeconds[mid]); 
+                if (managementSeconds[mid] <= 0) { 
+                    clearInterval(managementTimers[mid]); 
+                    managementTimers[mid] = null; 
+                } 
+            } 
+        }, 1000); 
+    }
+
     function startIndependentMgtTimer(mid, durSeconds) {
-    const startTime = new Date();
-    const targetTime = new Date(startTime.getTime() + durSeconds * 1000);
-    managementTimers[mid] = setInterval(() => {
-        const now = new Date();
-        const remaining = Math.round((targetTime - now) / 1000);
-        managementSeconds[mid] = Math.max(0, remaining);
+        managementSeconds[mid] = durSeconds;
         updateMgtTimerDisplay(mid, managementSeconds[mid]);
-        if (remaining <= 0) {
-            clearInterval(managementTimers[mid]);
-            delete managementTimers[mid];
-        }
-    }, 1000);
-}
+        managementTimers[mid] = setInterval(() => {
+            managementSeconds[mid]--;
+            updateMgtTimerDisplay(mid, managementSeconds[mid]);
+            if (managementSeconds[mid] <= 0) {
+                clearInterval(managementTimers[mid]);
+                delete managementTimers[mid];
+            }
+        }, 1000);
+    }
+
+    function updateMgtTimerDisplay(mid, s) {
+        const el = document.getElementById(`timer-${mid}`);
+        if (el) el.innerText = formatTimerStr(Math.max(0, s));
+        const resEl = document.getElementById(`res-timer-${mid}`);
+        if (resEl) resEl.innerText = formatTimerStr(Math.max(0, s));
+    }
+
+    function handleExcel(e) { processExcelFile(e.target.files[0]); }
+    function processExcelFile(file) {
+        if (!file) return;
+        const reader = new FileReader(); 
+        reader.onload = (ev) => {
+            const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' }), json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
             document.getElementById('team-name-display').innerText = json[0] ? json[0][2] : "TEAM"; playersMaster = []; initialMaster = [];
             for(let j=2; j<25; j++) {
                 const r = json[j] || []; let frs = [];
@@ -847,6 +942,7 @@
             renderLists(); checkFRConditions();
         }; reader.readAsArrayBuffer(file);
     }
+
     const menu = document.getElementById("floating-menu"), handle = document.getElementById("menu-drag-handle");
     let isDrag = false, ox, oy;
     handle.onmousedown = (e) => { isDrag = true; ox = e.clientX - menu.offsetLeft; oy = e.clientY - menu.offsetTop; };
