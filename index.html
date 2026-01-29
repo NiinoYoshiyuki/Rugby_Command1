@@ -863,5 +863,41 @@
     document.onmouseup = () => isDrag = false;
     playersMaster = []; for(let i=1; i<=23; i++) playersMaster.push({id:'init'+i, no:'', name:'-----', cat:'', fr:'', status:'normal'});
 </script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const handle = document.getElementById('menu-drag-handle');
+    const menu = document.getElementById('floating-menu');
+
+    let offsetX = 0, offsetY = 0;
+    let isDragging = false;
+
+    handle.addEventListener('touchstart', function (e) {
+        isDragging = true;
+        const touch = e.touches[0];
+        const rect = menu.getBoundingClientRect();
+        offsetX = touch.clientX - rect.left;
+        offsetY = touch.clientY - rect.top;
+        e.preventDefault();
+    }, { passive: false });
+
+    handle.addEventListener('touchmove', function (e) {
+        if (!isDragging) return;
+        const touch = e.touches[0];
+        const x = touch.clientX - offsetX;
+        const y = touch.clientY - offsetY;
+
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+        menu.style.transform = 'none';
+        e.preventDefault();
+    }, { passive: false });
+
+    handle.addEventListener('touchend', function () {
+        isDragging = false;
+    });
+});
+</script>
+
 </body>
 </html>
