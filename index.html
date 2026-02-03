@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rugby Sub Manager - Pro 2026 v3.8.2</title>
+    <title>Rugby Sub Manager - Pro 2026 v3.8.3</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -106,7 +106,10 @@
 
 <main>
     <div class="column"><h2>Field</h2><div id="field-list" class="scroll-area"></div></div>
-    <div class="column"><h2>Bench</h2><div id="bench-list" class="scroll-area"></div></div>
+    <div class="column" ondragover="e=>e.preventDefault()" ondrop="dropToBenchArea(event)">
+        <h2>Bench</h2>
+        <div id="bench-list" class="scroll-area"></div>
+    </div>
     <div class="col-res-admin">
         <div class="column" style="height: 48%; width: 100%;" ondragover="e=>e.preventDefault()" ondrop="dropToRes(event)">
             <h2>Reservations</h2>
@@ -184,6 +187,18 @@
         } 
     }
 
+    function dropToBenchArea(e) {
+        e.preventDefault();
+        // 選手カード上ではなく、ベンチカラムの余白にドロップされた場合
+        if (window.dragged?.source === 'field') {
+            if (!validateFR(window.dragged.item.player, null, window.dragged.item.posId)) return;
+            saveHistory();
+            // IN選手をnullにしてTemporary予約を作成
+            reservations.push({ id: Date.now(), out: window.dragged.item.player, in: null, posId: window.dragged.item.posId, type: 'Temporary', isFromAdmin: false, isCard: false });
+            render();
+        }
+    }
+
     function processExcel(data) {
         saveHistory();
         if (data[0] && data[0][0]) document.getElementById('team-name-display').innerText = data[0][0];
@@ -232,8 +247,8 @@
             div.innerHTML = `<span class="pos-label">${item.posId}</span><span class="name-area color-normal">#${p ? p.no+' '+p.name : '---'}</span>
                 ${p?.cat ? `<span class="attr-tag cat-tag">${p.cat}</span>` : ''}
                 ${p?.fr?.length ? `<span class="attr-tag fr-tag">${p.fr.join('')}</span>` : ''}`;
-            div.draggable = true; 
-            div.ondragstart = () => { window.dragged = {source:'field', item}; }; 
+            div.draggable = !!p; 
+            div.ondragstart = () => { if(p) window.dragged = {source:'field', item}; }; 
             div.ondragover = e => e.preventDefault();
             div.ondrop = e => { 
                 e.stopPropagation();
@@ -367,18 +382,22 @@
             adminCards.push({ id: Date.now(), type: r.type, out: r.out, in: null, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: 600000, nextAction: r.type === 'RED' ? 'Replacement' : 'Return', reason: '', ofrDecision: null });
         } else if (r.type === 'Temporary') {
             const currentFieldPlayer = f.player;
-            const currentBenchPlayer = r.in;
+            const currentBenchPlayer = r.in; // ベンチ余白ドロップ時はnull
             if(currentFieldPlayer) currentFieldPlayer.status = 'normal';
             if(currentBenchPlayer) currentBenchPlayer.status = 'normal';
-            f.player = currentBenchPlayer;
-            if (r.benchIdx !== undefined && r.benchIdx < benchPlayers.length) {
-                benchPlayers[r.benchIdx] = currentFieldPlayer;
-            } else {
-                const eIdx = benchPlayers.indexOf(null);
-                if (eIdx !== -1) benchPlayers[eIdx] = currentFieldPlayer;
-                else benchPlayers.push(currentFieldPlayer);
+            
+            f.player = currentBenchPlayer; // フィールド側はnull（空白）になる
+
+            if (currentFieldPlayer) {
+                if (r.benchIdx !== undefined && r.benchIdx < benchPlayers.length) {
+                    benchPlayers[r.benchIdx] = currentFieldPlayer;
+                } else {
+                    const eIdx = benchPlayers.indexOf(null);
+                    if (eIdx !== -1) benchPlayers[eIdx] = currentFieldPlayer;
+                    else benchPlayers.push(currentFieldPlayer);
+                }
             }
-            logs.unshift({ type: 'Temporary (SWAP)', matchTime: matchTime, pcTime: pcTime, out: currentFieldPlayer, in: currentBenchPlayer, isColor: false });
+            logs.unshift({ type: 'Temporary (OUT)', matchTime: matchTime, pcTime: pcTime, out: currentFieldPlayer, in: currentBenchPlayer, isColor: false });
         } else {
             if (r.out) {
                 let s = 'normal';
@@ -467,9 +486,7 @@
     function setOfrDecision(id, d) {
         saveHistory(); const c = adminCards.find(x => x.id === id); if(!c) return;
         c.ofrDecision = d;
-        // OFRの決定をログに記録
         logs.unshift({ type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, in: null, isColor: true });
-        
         if(d === 'RED UPGRADE') {
             c.nextAction = 'Replacement'; c.remainingMs += 600000; renderAdmin(); openPlayerModal(id);
         } else {
