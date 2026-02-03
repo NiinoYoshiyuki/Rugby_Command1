@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rugby Sub Manager - Pro 2026 v3.8.1</title>
+    <title>Rugby Sub Manager - Pro 2026 v3.8.2</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -179,7 +179,6 @@
     function dropToRes(e) { 
         e.preventDefault(); 
         if (window.dragged?.source === 'field') { 
-            // Reservationsエリア(カード等)へのドラッグ：このスロットは空(null)になるため、警告判定を行う
             if (!validateFR(window.dragged.item.player, null, window.dragged.item.posId)) return;
             saveHistory(); createCardReservation(window.dragged.item.player, window.dragged.item.posId); 
         } 
@@ -213,15 +212,8 @@
         document.getElementById('uncontested-alert').style.display = uncontested ? 'block' : 'none';
     }
 
-    /**
-     * FRバリデーション（未来予知版）
-     * @param {Object} outP 退く選手
-     * @param {Object} inP 入る選手（補充される選手）
-     * @param {Number} posId 操作対象のポジション番号
-     */
     function validateFR(outP, inP, posId) {
         if (![1, 2, 3].includes(posId)) return true;
-        // 操作後にその番号に座る予定の選手（inP）が、その番号の資格を持っているか
         const isCompliant = inP && inP.fr && inP.fr.includes(String(posId));
         if (!isCompliant) {
             const msg = !inP 
@@ -246,11 +238,9 @@
             div.ondrop = e => { 
                 e.stopPropagation();
                 if (window.dragged?.source === 'bench') {
-                    // ベンチ選手をフィールド(1-3番)へ：ドラッグしてきた選手の資格をチェック
                     if (!validateFR(item.player, window.dragged.p, item.posId)) return;
                     saveHistory(); createReservation(item.player, window.dragged.p, item.posId, window.dragged.index);
                 } else if (window.dragged?.source === 'field') {
-                    // フィールド内スワップ：入れ替わり先の資格を両地点ともチェック
                     if (!validateFR(item.player, window.dragged.item.player, item.posId)) return;
                     if (!validateFR(window.dragged.item.player, item.player, window.dragged.item.posId)) return;
                     saveHistory(); swapPlayers(window.dragged.item, item);
@@ -280,9 +270,6 @@
             div.ondrop = e => {
                 e.stopPropagation();
                 if (window.dragged?.source === 'field') { 
-                    // フィールド選手をベンチへ：
-                    // ドロップ先が特定のベンチ選手(p)なら「その選手が代わりに入る」とみなして資格判定
-                    // ドロップ先が空スロット(p=null)なら「補充なし」とみなして資格判定
                     if (!validateFR(window.dragged.item.player, p, window.dragged.item.posId)) return;
                     saveHistory(); createReservation(window.dragged.item.player, p, window.dragged.item.posId, idx); 
                 }
@@ -449,7 +436,7 @@
                 } else {
                     const mode = (c.ofrDecision === 'RED UPGRADE' || c.type === 'RED') ? 'RED' : 'YELLOW';
                     content += `<div class="btn-group">
-                        ${mode === 'YELLOW' ? `<button class="${c.nextAction==='Return'?'active-return':''}" onclick="setAdminNext(${c.id},'Return')">Return</button><button class="${c.nextAction==='Tactical'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Tac')">Tac</button><button class="${c.nextAction==='Injury'?'active-injury':''}" onclick="setAdminNext(${c.id},'Inj')">Inj</button>` 
+                        ${mode === 'YELLOW' ? `<button class="${c.nextAction==='Return'?'active-return':''}" onclick="setAdminNext(${c.id},'Return')">Return</button><button class="${c.nextAction==='Tactical'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Tactical')">Tac</button><button class="${c.nextAction==='Injury'?'active-injury':''}" onclick="setAdminNext(${c.id},'Injury')">Inj</button>` 
                         : `<button style="grid-column: span 3;" class="${c.nextAction==='Replacement'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Replacement')">Replacement</button>`}
                     </div><button class="btn-go-res" onclick="returnToRes(${c.id})">Go to reservation</button>`;
                 }
@@ -459,7 +446,7 @@
                     <div class="admin-header"><span style="font-weight:900;">${c.type}</span><span class="admin-times">${c.matchTime}/${c.pcTime}</span><span class="admin-countdown" id="admin-time-${c.id}">${displayTime}</span></div>`;
                 if (c.nextAction === 'Return') inner += `<div class="card-row"><span>OUT</span><b>${pInName}</b></div><div class="card-row in-row"><span>IN</span><b class="color-medical">${pOutName}</b></div>`;
                 else inner += `<div class="card-row"><span>STAY</span><b>${pOutName}</b></div><div class="card-row"><span>FIELD</span><b>${pInName} (Keep)</b></div>`;
-                inner += `<div class="btn-group"><button class="${c.nextAction==='Return'?'active-return':''}" onclick="setAdminNext(${c.id},'Return')">Return</button><button class="${c.nextAction==='Tactical'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Tac')">Tac</button><button class="${c.nextAction==='Injury'?'active-injury':''}" onclick="setAdminNext(${c.id},'Inj')">Inj</button></div><button class="btn-go-res" onclick="returnToRes(${c.id})">Go to reservation</button>`;
+                inner += `<div class="btn-group"><button class="${c.nextAction==='Return'?'active-return':''}" onclick="setAdminNext(${c.id},'Return')">Return</button><button class="${c.nextAction==='Tactical'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Tactical')">Tac</button><button class="${c.nextAction==='Injury'?'active-injury':''}" onclick="setAdminNext(${c.id},'Injury')">Inj</button></div><button class="btn-go-res" onclick="returnToRes(${c.id})">Go to reservation</button>`;
                 div.innerHTML = inner;
             }
             el.appendChild(div);
@@ -480,6 +467,9 @@
     function setOfrDecision(id, d) {
         saveHistory(); const c = adminCards.find(x => x.id === id); if(!c) return;
         c.ofrDecision = d;
+        // OFRの決定をログに記録
+        logs.unshift({ type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, in: null, isColor: true });
+        
         if(d === 'RED UPGRADE') {
             c.nextAction = 'Replacement'; c.remainingMs += 600000; renderAdmin(); openPlayerModal(id);
         } else {
