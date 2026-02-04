@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rugby Sub Manager - Pro 2026 v3.9.1</title>
+    <title>Rugby Sub Manager - Pro 2026 v3.9.5</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -19,8 +19,17 @@
         .header-top { display: flex; justify-content: space-between; align-items: center; position: relative; }
         #team-name-display { font-weight: 900; font-size: 1.4rem; color: var(--text-main); }
         
-        .cat-info-bar { font-size: 9px; font-weight: 800; color: var(--text-sub); margin-top: 2px; cursor: pointer; display: flex; gap: 10px; }
-        .cat-limit-popup { display: none; position: absolute; top: 100%; left: 0; background: #fff; border: 3px solid var(--text-main); border-radius: 10px; padding: 15px; z-index: 6000; box-shadow: 0 10px 30px rgba(0,0,0,0.3); width: 200px; }
+        .header-right { display: flex; align-items: center; gap: 15px; }
+        .btn-setting { background: #f1f5f9; border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 8px; font-weight: 800; font-size: 0.75rem; cursor: pointer; color: var(--text-sub); transition: 0.2s; }
+        .btn-setting:hover { background: #e2e8f0; }
+
+        .cat-info-bar { font-size: 9px; font-weight: 800; color: var(--text-sub); margin-top: 2px; display: flex; gap: 10px; }
+        
+        #setting-popup { display: none; position: absolute; top: 100%; right: 0; background: #fff; border: 2px solid var(--text-main); border-radius: 12px; padding: 15px; z-index: 6500; box-shadow: 0 10px 30px rgba(0,0,0,0.3); width: 220px; margin-top: 10px; }
+        .setting-menu-btn { width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 8px; background: #f8fafc; font-weight: 800; cursor: pointer; text-align: left; font-size: 0.85rem; }
+        .setting-menu-btn:hover { background: #f1f5f9; }
+
+        .cat-limit-popup { display: none; position: absolute; top: 0; right: 230px; background: #fff; border: 3px solid var(--text-main); border-radius: 10px; padding: 15px; z-index: 6600; box-shadow: 0 10px 30px rgba(0,0,0,0.3); width: 200px; }
         .cat-limit-popup input { width: 40px; padding: 4px; font-size: 1rem; font-weight: 900; text-align: center; }
         .cat-limit-popup label { font-size: 11px; font-weight: 800; }
 
@@ -95,6 +104,8 @@
         .log-yc { background-color: var(--color-yc); color: #000; }
         .log-rc { background-color: var(--color-rc); color: #fff; }
         .log-ofr { background-color: var(--color-ofr); color: #fff; }
+        /* Record Period Logic */
+        .log-period { color: #dc2626; font-weight: 900; }
         
         #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
         .modal-content { background: white; padding: 20px; border-radius: 12px; width: 300px; max-height: 80vh; overflow-y: auto; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
@@ -107,35 +118,46 @@
     <div class="header-top">
         <div>
             <div id="team-name-display">Drop Excel to Load Team</div>
-            <div id="cat-info" class="cat-info-bar" ondblclick="showCatEdit()">
+            <div id="cat-info" class="cat-info-bar">
                 A2+B+C: 0/4 | C: 0/3 (Loading limits...)
-            </div>
-            <div id="cat-edit-popup" class="cat-limit-popup">
-                <div style="margin-bottom:10px;">
-                    <label>A2+B+C Max: </label><input type="number" id="limit-abc" value="4"><br>
-                    <label>C Only Max: </label><input type="number" id="limit-c" value="3">
-                </div>
-                <button onclick="hideCatEdit()" style="width:100%; padding:5px; background:var(--field-green); color:white; border:none; border-radius:4px; font-weight:800;">SAVE</button>
             </div>
         </div>
         <div id="uncontested-alert">Uncontested scrum</div>
-        <div class="stopwatch-container">
-            <div class="stopwatch-panel">
-                <div id="timer-display" ondblclick="showTimeEdit()">00:00</div>
-                <button id="btn-toggle" class="btn-sw btn-toggle-start" onclick="toggleTimer()">START</button>
-                <button class="btn-sw btn-reset" onclick="resetTimer()">RESET</button>
-                <button class="btn-sw btn-history" onclick="undo()" title="Undo">UNDO</button>
-                <button class="btn-sw btn-history" onclick="redo()" title="Redo">REDO</button>
-            </div>
-            <div id="time-edit-popup">
-                <div class="edit-input-group">
-                    <input type="number" id="edit-min" min="0" max="99">
-                    <span style="font-weight:900; font-size:1.5rem;">:</span>
-                    <input type="number" id="edit-sec" min="0" max="59">
+        <div class="header-right">
+            <div class="stopwatch-container">
+                <div class="stopwatch-panel">
+                    <div id="timer-display" ondblclick="showTimeEdit()">00:00</div>
+                    <button id="btn-toggle" class="btn-sw btn-toggle-start" onclick="toggleTimer()">START</button>
+                    <button class="btn-sw btn-reset" onclick="resetTimer()">RESET</button>
+                    <button class="btn-sw btn-history" onclick="undo()" title="Undo">UNDO</button>
+                    <button class="btn-sw btn-history" onclick="redo()" title="Redo">REDO</button>
                 </div>
-                <div class="edit-actions">
-                    <button class="btn-edit-save" onclick="saveEditedTime()">UPDATE</button>
-                    <button class="btn-edit-cancel" onclick="hideTimeEdit()">CLOSE</button>
+                <div id="time-edit-popup">
+                    <div class="edit-input-group">
+                        <input type="number" id="edit-min" min="0" max="99">
+                        <span style="font-weight:900; font-size:1.5rem;">:</span>
+                        <input type="number" id="edit-sec" min="0" max="59">
+                    </div>
+                    <div class="edit-actions">
+                        <button class="btn-edit-save" onclick="saveEditedTime()">UPDATE</button>
+                        <button class="btn-edit-cancel" onclick="hideTimeEdit()">CLOSE</button>
+                    </div>
+                </div>
+            </div>
+            <div style="position: relative;">
+                <button class="btn-setting" onclick="toggleSetting()">SETTING</button>
+                <div id="setting-popup">
+                    <button class="setting-menu-btn" onclick="showCatEdit()">CATEGORY</button>
+                    <button class="setting-menu-btn" onclick="recordEndOfFirstHalf()">End of first half</button>
+                    <button class="setting-menu-btn" onclick="toggleSetting()" style="background:#eee; text-align:center;">CLOSE</button>
+                    
+                    <div id="cat-edit-popup" class="cat-limit-popup">
+                        <div style="margin-bottom:10px;">
+                            <label>A2+B+C Max: </label><input type="number" id="limit-abc" value="4"><br>
+                            <label>C Only Max: </label><input type="number" id="limit-c" value="3">
+                        </div>
+                        <button onclick="hideCatEdit()" style="width:100%; padding:5px; background:var(--field-green); color:white; border:none; border-radius:4px; font-weight:800;">SAVE</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -171,14 +193,27 @@
     let elapsedTime = 0, timerInterval = null, lastTick = Date.now();
     let currentSelectionContext = null, historyStack = [], redoStack = [];
 
-    // --- カテゴリー制限設定 ---
     let catLimits = { abc: 4, c: 3 };
+
+    function toggleSetting() {
+        const p = document.getElementById('setting-popup');
+        p.style.display = (p.style.display === 'block') ? 'none' : 'block';
+    }
+
     function showCatEdit() { document.getElementById('cat-edit-popup').style.display = 'block'; }
     function hideCatEdit() { 
         catLimits.abc = parseInt(document.getElementById('limit-abc').value) || 0;
         catLimits.c = parseInt(document.getElementById('limit-c').value) || 0;
         document.getElementById('cat-edit-popup').style.display = 'none';
         updateCatDisplay();
+    }
+
+    function recordEndOfFirstHalf() {
+        saveHistory();
+        const timeStr = formatTime(elapsedTime);
+        logs.unshift({ type: 'End of first half', matchTime: timeStr, pcTime: getPCNow(), out: null, in: null, isPeriod: true });
+        renderLogs();
+        toggleSetting();
     }
 
     function updateCatDisplay() {
@@ -197,26 +232,20 @@
         if (!inP) return true;
         const inCat = String(inP.cat).toUpperCase();
         if (!['A2', 'B', 'C'].includes(inCat)) return true;
-
         let curABC = 0, curC = 0;
         fieldPositions.forEach(f => {
-            // OUT選手を除いた現状をカウント
             if (f.player && f.player.id !== outP?.id) {
                 const c = String(f.player.cat).toUpperCase();
                 if (['A2', 'B', 'C'].includes(c)) curABC++;
                 if (c === 'C') curC++;
             }
         });
-
-        // IN選手を加えた未来を予測
         const nextABC = curABC + 1;
         const nextC = curC + (inCat === 'C' ? 1 : 0);
-
         if (nextABC > catLimits.abc) return confirm(`[カテゴリー制限] A2+B+Cが上限(${catLimits.abc}人)を超えます。よろしいですか？`);
         if (nextC > catLimits.c) return confirm(`[カテゴリー制限] Cが上限(${catLimits.c}人)を超えます。よろしいですか？`);
         return true;
     }
-    // ----------------------
 
     function showTimeEdit() {
         const popup = document.getElementById('time-edit-popup');
@@ -338,7 +367,7 @@
                 e.stopPropagation();
                 if (window.dragged?.source === 'bench') {
                     if (!validateFR(item.player, window.dragged.p, item.posId)) return;
-                    if (!validateCategory(item.player, window.dragged.p)) return; // ベンチ→フィールド：チェック
+                    if (!validateCategory(item.player, window.dragged.p)) return;
                     saveHistory(); 
                     const defaultType = p === null ? 'Temporary' : 'Tactical';
                     createReservation(item.player, window.dragged.p, item.posId, window.dragged.index, defaultType);
@@ -368,7 +397,7 @@
                 e.stopPropagation();
                 if (window.dragged?.source === 'field') { 
                     if (!validateFR(window.dragged.item.player, p, window.dragged.item.posId)) return;
-                    if (!validateCategory(window.dragged.item.player, p)) return; // フィールド→ベンチ：チェック
+                    if (!validateCategory(window.dragged.item.player, p)) return;
                     saveHistory(); createReservation(window.dragged.item.player, p, window.dragged.item.posId, idx, 'Tactical'); 
                 }
             };
@@ -445,7 +474,8 @@
                 const eIdx = benchPlayers.indexOf(null); if (eIdx !== -1) benchPlayers[eIdx] = updatedPlayer; else benchPlayers.push(updatedPlayer);
             }
             f.player = null;
-            adminCards.push({ id: Date.now(), type: r.type, out: r.out, in: null, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: 600000, nextAction: r.type === 'RED' ? 'Replacement' : 'Return', reason: '', ofrDecision: null });
+            const initialRemaining = r.type === 'RED' ? 1200000 : 600000;
+            adminCards.push({ id: Date.now(), type: r.type, out: r.out, in: null, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: initialRemaining, nextAction: r.type === 'RED' ? 'Replacement' : 'Return', reason: '', ofrDecision: null });
         } else if (r.type === 'Temporary') {
             const cF = f.player; const cB = r.in; if(cF) cF.status = 'normal'; if(cB) cB.status = 'normal';
             f.player = cB;
@@ -519,7 +549,15 @@
         if(['Tactical','Injury','Replacement'].includes(act) && !isMedicalType(c.type)) { renderAdmin(); openPlayerModal(id); } 
         else { if (act === 'Return' && ['YELLOW','RED','OFR'].includes(c.type)) c.in = null; renderAdmin(); } 
     }
-    function setOfrDecision(id, d) { saveHistory(); const c = adminCards.find(x => x.id === id); if(!c) return; c.ofrDecision = d; logs.unshift({ type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, in: null, isColor: true }); if(d === 'RED UPGRADE') { c.nextAction = 'Replacement'; c.remainingMs += 600000; renderAdmin(); openPlayerModal(id); } else { c.nextAction = 'Return'; render(); } }
+    function setOfrDecision(id, d) { 
+        saveHistory(); const c = adminCards.find(x => x.id === id); if(!c) return; c.ofrDecision = d; 
+        logs.unshift({ type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, in: null, isColor: true }); 
+        if(d === 'RED UPGRADE') { 
+            c.nextAction = 'Replacement'; 
+            c.remainingMs = 1200000; 
+            renderAdmin(); openPlayerModal(id); 
+        } else { c.nextAction = 'Return'; render(); } 
+    }
     
     function openPlayerModal(cid) { 
         currentSelectionContext = cid; const list = document.getElementById('modal-player-list'); list.innerHTML = ''; 
@@ -545,16 +583,28 @@
     function returnToRes(id) { saveHistory(); const c = adminCards.find(x => x.id === id); if (!c) return; if (['YELLOW', 'RED', 'OFR'].includes(c.type) && ['Tactical', 'Injury', 'Replacement'].includes(c.nextAction) && !c.in) { alert("交代する選手を選択してください。"); return; } let outP, inP; if (c.nextAction === 'Return') { outP = c.in; inP = c.out; } else { outP = c.out; inP = c.in; } reservations.push({ id: Date.now(), out: outP, in: inP, posId: c.posId, benchIdx: c.benchIdx, type: c.nextAction === 'Replacement' ? 'Tactical' : c.nextAction, isFromAdmin: true, adminType: c.type, origMatchTime: c.matchTime, remainingMs: c.remainingMs, ofrDecision: c.ofrDecision }); adminCards = adminCards.filter(x => x.id !== id); render(); }
     function formatTime(ms) { const s = Math.floor(Math.max(0, ms) / 1000); return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
     function delItem(t, id) { saveHistory(); if(t==='res') reservations = reservations.filter(x=>x.id!==id); else adminCards = adminCards.filter(x=>x.id!==id); render(); }
+    
     function renderLogs() {
         const el = document.getElementById('log-list'); el.innerHTML = '';
         logs.forEach(l => {
-            const div = document.createElement('div'); let cls = '';
-            if (l.isColor) { if (l.type.includes('YELLOW')) cls = 'log-yc'; else if (l.type.includes('RED')) cls = 'log-rc'; else if (l.type.includes('OFR')) cls = 'log-ofr'; }
-            div.className = `log-item ${cls}`;
-            div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})<br>OUT:#${l.out?.no || '--'} ${l.out?.name || '(NONE)'}${l.in ? `<br>IN:#${l.in.no} ${l.in.name}` : ''}`;
+            const div = document.createElement('div'); 
+            let cls = 'log-item';
+            if (l.isPeriod) {
+                cls += ' log-period';
+                div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})`;
+            } else {
+                if (l.isColor) { 
+                    if (l.type.includes('YELLOW')) cls += ' log-yc'; 
+                    else if (l.type.includes('RED')) cls += ' log-rc'; 
+                    else if (l.type.includes('OFR')) cls += ' log-ofr'; 
+                }
+                div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})<br>OUT:#${l.out?.no || '--'} ${l.out?.name || '(NONE)'}${l.in ? `<br>IN:#${l.in.no} ${l.in.name}` : ''}`;
+            }
+            div.className = cls;
             el.appendChild(div);
         });
     }
+
     document.body.addEventListener('dragover', e => e.preventDefault());
     document.body.addEventListener('drop', e => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file && file.name.endsWith('.xlsx')) { const reader = new FileReader(); reader.onload = ev => { const wb = XLSX.read(new Uint8Array(ev.target.result), {type: 'array'}); processExcel(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1})); }; reader.readAsArrayBuffer(file); } });
     setInterval(tick, 100);
