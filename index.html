@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rugby Sub Manager - Pro 2026 v4.0.0</title>
+    <title>Rugby Sub Manager - Pro 2026 v4.2.0</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -110,7 +110,7 @@
         .modal-player-btn { width: 100%; padding: 10px; margin-bottom: 5px; border: 1px solid var(--border-color); border-radius: 6px; background: white; font-weight: 700; cursor: pointer; text-align: left; }
     </style>
 </head>
-<body>
+<body onload="loadFromStorage()">
 
 <header>
     <div class="header-top">
@@ -147,6 +147,9 @@
                 <div id="setting-popup">
                     <button class="setting-menu-btn" onclick="showCatEdit()">CATEGORY</button>
                     <button class="setting-menu-btn" onclick="recordEndOfFirstHalf()">End of first half</button>
+                    <button class="setting-menu-btn" onclick="exportLogs()" style="color:var(--text-tactical)">EXPORT LOG (CSV)</button>
+                    <hr>
+                    <button class="setting-menu-btn" onclick="allClear()" style="background:#fee2e2; color:#ef4444; border-color:#ef4444;">ALL CLEAR</button>
                     <button class="setting-menu-btn" onclick="toggleSetting()" style="background:#eee; text-align:center;">CLOSE</button>
                     
                     <div id="cat-edit-popup" class="cat-limit-popup">
@@ -190,9 +193,49 @@
     let benchPlayers = [], reservations = [], adminCards = [], logs = [];
     let elapsedTime = 0, timerInterval = null, lastTick = Date.now();
     let currentSelectionContext = null, historyStack = [], redoStack = [];
-    
     let isSecondHalf = false;
     let catLimits = { abc: 4, c: 3 };
+
+    // --- ローカルストレージ機能 ---
+    const STORAGE_KEY = "rugby_sub_manager_state";
+
+    function saveToStorage() {
+        const state = {
+            fieldPositions, benchPlayers, reservations, adminCards, logs,
+            elapsedTime, isSecondHalf, catLimits,
+            teamName: document.getElementById('team-name-display').innerText
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function loadFromStorage() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            try {
+                const state = JSON.parse(saved);
+                fieldPositions = state.fieldPositions;
+                benchPlayers = state.benchPlayers;
+                reservations = state.reservations;
+                adminCards = state.adminCards;
+                logs = state.logs;
+                elapsedTime = state.elapsedTime || 0;
+                isSecondHalf = state.isSecondHalf || false;
+                catLimits = state.catLimits || { abc: 4, c: 3 };
+                document.getElementById('team-name-display').innerText = state.teamName || "Drop Excel to Load Team";
+                document.getElementById('limit-abc').value = catLimits.abc;
+                document.getElementById('limit-c').value = catLimits.c;
+                render();
+            } catch(e) { console.error("Load failed", e); }
+        }
+    }
+
+    function allClear() {
+        if (confirm("全てのデータを初期化します。よろしいですか？\n(読み込んだチーム名、選手配置、ログ、タイマーが全て消去されます)")) {
+            localStorage.removeItem(STORAGE_KEY);
+            location.reload(); // ページ再読み込みで初期状態へ
+        }
+    }
+    // ----------------------------
 
     function toggleSetting() {
         const p = document.getElementById('setting-popup');
@@ -205,20 +248,41 @@
         catLimits.c = parseInt(document.getElementById('limit-c').value) || 0;
         document.getElementById('cat-edit-popup').style.display = 'none';
         updateCatDisplay();
+        saveToStorage();
     }
 
-    /**
-     * ハーフタイム跨ぎ処理 (End of first half)
-     * 仕様：時計を40:00(2400000ms)に強制セットし停止。
-     */
+    function exportLogs() {
+        if (logs.length === 0) { alert("ログがありません。"); return; }
+        let csvContent = "\uFEFF"; 
+        csvContent += "Type,MatchTime,PCTime,OUT_No,OUT_Name,IN_No,IN_Name\n";
+        logs.forEach(l => {
+            const type = (l.type || "").replace(/"/g, '""');
+            const matchTime = l.matchTime || "";
+            const pcTime = l.pcTime || "";
+            const outNo = l.out ? l.out.no : "";
+            const outName = l.out ? `"${l.out.name.replace(/"/g, '""')}"` : "";
+            const inNo = l.in ? l.in.no : "";
+            const inName = l.in ? `"${l.in.name.replace(/"/g, '""')}"` : "";
+            csvContent += `${type},${matchTime},${pcTime},${outNo},${outName},${inNo},${inName}\n`;
+        });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const teamName = document.getElementById('team-name-display').innerText.replace(/\s+/g, '_');
+        link.setAttribute("href", url);
+        link.setAttribute("download", `RugbyLog_${teamName}_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toggleSetting();
+    }
+
     function recordEndOfFirstHalf() {
         saveHistory();
         const timeStr = formatTime(elapsedTime);
         const PCStr = getPCNow();
-        
         logs.unshift({ type: 'End of first half', matchTime: timeStr, pcTime: PCStr, out: null, in: null, isPeriod: true });
         elapsedTime = 2400000;
-        
         if (timerInterval) {
             clearInterval(timerInterval);
             timerInterval = null;
@@ -278,11 +342,9 @@
         const s = parseInt(document.getElementById('edit-sec').value) || 0;
         const newMs = (m * 60 + s) * 1000;
         const diff = newMs - elapsedTime;
-        
         const isCardType = (type) => ['YELLOW','RED','OFR'].includes(type);
         adminCards.forEach(c => { if (isCardType(c.type) && c.remainingMs !== undefined) c.remainingMs = Math.max(0, c.remainingMs - diff); });
         reservations.forEach(r => { if (r.isFromAdmin && isCardType(r.adminType) && r.remainingMs !== undefined) r.remainingMs = Math.max(0, r.remainingMs - diff); });
-        
         elapsedTime = newMs; lastTick = Date.now();
         document.getElementById('timer-display').innerText = formatTime(elapsedTime);
         render(); hideTimeEdit();
@@ -313,13 +375,13 @@
             saveHistory(); elapsedTime = 0; isSecondHalf = false;
             if (timerInterval) toggleTimer(); 
             document.getElementById('timer-display').innerText = "00:00";
+            saveToStorage();
         }
     }
 
     function tick() {
         const now = Date.now(); const delta = now - lastTick; lastTick = now;
         if (timerInterval) elapsedTime += delta; 
-        
         const updateRemaining = (item) => {
             if (item.remainingMs !== undefined) {
                 if (isMedicalType(item.type || item.adminType)) {
@@ -329,16 +391,14 @@
                 }
             }
         };
-
         adminCards.forEach(updateRemaining);
         reservations.forEach(r => { if(r.isFromAdmin) updateRemaining(r); });
-
         document.getElementById('timer-display').innerText = formatTime(elapsedTime);
         adminCards.forEach(c => { const el = document.getElementById(`admin-time-${c.id}`); if (el) el.innerText = formatTime(c.remainingMs); });
         reservations.forEach(r => { if(r.isFromAdmin) { const el = document.getElementById(`res-time-${r.id}`); if(el) el.innerText = formatTime(r.remainingMs); }});
     }
 
-    function getCurrentState() { return JSON.stringify({ fieldPositions, benchPlayers, reservations, adminCards, logs, isSecondHalf }); }
+    function getCurrentState() { return JSON.stringify({ fieldPositions, benchPlayers, reservations, adminCards, logs, isSecondHalf, elapsedTime }); }
     function saveHistory() { historyStack.push(getCurrentState()); if (historyStack.length > 50) historyStack.shift(); redoStack = []; }
     function undo() { if (historyStack.length === 0) return; redoStack.push(getCurrentState()); applyState(historyStack.pop()); }
     function redo() { if (redoStack.length === 0) return; historyStack.push(getCurrentState()); applyState(redoStack.pop()); }
@@ -346,20 +406,17 @@
         const state = JSON.parse(stateStr); 
         fieldPositions = state.fieldPositions; benchPlayers = state.benchPlayers; reservations = state.reservations; 
         adminCards = state.adminCards; logs = state.logs; isSecondHalf = state.isSecondHalf || false;
+        elapsedTime = state.elapsedTime || 0;
         render(); 
     }
 
     function dropToRes(e) { e.preventDefault(); if (window.dragged?.source === 'field') { if (!validateFR(window.dragged.item.player, null, window.dragged.item.posId)) return; saveHistory(); createCardReservation(window.dragged.item.player, window.dragged.item.posId); } }
     
-    /**
-     * ベンチエリアへのドロップ
-     * フィールドの選手が退場（RC）や怪我（Injury）の場合は通常予約できないようガード
-     */
     function dropToBenchArea(e) { 
         e.preventDefault(); 
         if (window.dragged?.source === 'field') {
             const p = window.dragged.item.player;
-            if (p && (p.status === 'rc' || p.status === 'injury')) return; // ガード
+            if (p && (p.status === 'rc' || p.status === 'injury')) return;
             if (!validateFR(p, null, window.dragged.item.posId)) return;
             saveHistory(); 
             reservations.push({ id: Date.now(), out: p, in: null, posId: window.dragged.item.posId, type: 'Temporary', isFromAdmin: false, isCard: false }); 
@@ -424,8 +481,7 @@
                 if (window.dragged?.source === 'bench') {
                     if (!validateFR(item.player, window.dragged.p, item.posId)) return;
                     if (!validateCategory(item.player, window.dragged.p)) return;
-                    saveHistory(); 
-                    createReservation(item.player, window.dragged.p, item.posId, window.dragged.index, p === null ? 'Temporary' : 'Tactical');
+                    saveHistory(); createReservation(item.player, window.dragged.p, item.posId, window.dragged.index, p === null ? 'Temporary' : 'Tactical');
                 } else if (window.dragged?.source === 'field') {
                     if (!validateFR(item.player, window.dragged.item.player, item.posId)) return;
                     if (!validateFR(window.dragged.item.player, item.player, window.dragged.item.posId)) return;
@@ -441,14 +497,11 @@
             let cls = getPlayerColorClass(p);
             let statusClass = p.status === 'yc' ? 'status-yc' : (p.status === 'rc' ? 'status-rc' : (p.status === 'ofr' ? 'status-ofr' : ''));
             const div = document.createElement('div');
-            
-            // RCまたはInjuryの場合はドラッグ不可にする
             const isDisabled = ['injury', 'rc'].includes(p.status);
             div.className = `player-card ${p.status === 'injury' ? 'bg-injury' : ''} ${statusClass}`;
             div.innerHTML = `<span class="name-area ${cls}">#${p.no} ${p.name}</span>
                 ${p.cat ? `<span class="attr-tag cat-tag">${p.cat}</span>` : ''}
                 ${p.fr?.length ? `<span class="attr-tag fr-tag">${p.fr.join('')}</span>` : ''}`;
-            
             div.draggable = !isDisabled;
             div.ondragstart = () => { if(!isDisabled) window.dragged = {source:'bench', p, index: idx}; };
             div.ondragover = e => { if(!isDisabled) e.preventDefault(); };
@@ -464,6 +517,7 @@
             bl.appendChild(div);
         });
         checkFRCompliance(); updateCatDisplay(); renderRes(); renderAdmin(); renderLogs();
+        saveToStorage(); // 状態が変わるたびに保存
     }
 
     function swapPlayers(sourceItem, targetItem) {
@@ -526,7 +580,6 @@
         const matchTime = formatTime(elapsedTime); const pcTime = getPCNow();
         const cleanupBench = (p) => { if (p) benchPlayers = benchPlayers.map(x => (x && x.id === p.id) ? null : x); };
         cleanupBench(r.out); cleanupBench(r.in);
-
         if (r.isCard) {
             const statusMap = { 'YELLOW': 'yc', 'RED': 'rc', 'OFR': 'ofr' };
             logs.unshift({ type: r.type, matchTime: matchTime, pcTime: pcTime, out: r.out, in: null, isColor: true });
@@ -583,7 +636,6 @@
             const pInName = c.in ? `#${c.in.no} ${c.in.name}` : '(NONE)';
             const outColor = getPlayerColorClass(c.out);
             const inColor = getPlayerColorClass(c.in);
-
             if (['YELLOW','RED','OFR'].includes(c.type)) {
                 let content = `<button class="btn-delete" onclick="delItem('admin',${c.id})">×</button>
                     <div class="admin-header"><span style="font-weight:900;">${c.type}</span><span class="admin-times">${c.matchTime}/${c.pcTime}</span><span class="admin-countdown" id="admin-time-${c.id}">${displayTime}</span></div>
