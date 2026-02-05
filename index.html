@@ -104,6 +104,11 @@
         .log-rc { background-color: var(--color-rc); color: #fff; }
         .log-ofr { background-color: var(--color-ofr); color: #fff; }
         .log-period { color: #dc2626; font-weight: 900; }
+
+        /* 追加スタイル */
+        .log-reason-input { width: 100%; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 4px; font-size: 10px; font-weight: 700; background: rgba(255,255,255,0.7); margin-top: 4px; box-sizing: border-box; }
+        .log-rc .log-reason-input { background: rgba(255,255,255,0.2); color: #fff; border-color: rgba(255,255,255,0.3); }
+        .log-rc .log-reason-input::placeholder { color: rgba(255,255,255,0.6); }
         
         #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
         .modal-content { background: white; padding: 20px; border-radius: 12px; width: 300px; max-height: 80vh; overflow-y: auto; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
@@ -232,10 +237,9 @@
     function allClear() {
         if (confirm("全てのデータを初期化します。よろしいですか？\n(読み込んだチーム名、選手配置、ログ、タイマーが全て消去されます)")) {
             localStorage.removeItem(STORAGE_KEY);
-            location.reload(); // ページ再読み込みで初期状態へ
+            location.reload(); 
         }
     }
-    // ----------------------------
 
     function toggleSetting() {
         const p = document.getElementById('setting-popup');
@@ -254,7 +258,7 @@
     function exportLogs() {
         if (logs.length === 0) { alert("ログがありません。"); return; }
         let csvContent = "\uFEFF"; 
-        csvContent += "Type,MatchTime,PCTime,OUT_No,OUT_Name,IN_No,IN_Name\n";
+        csvContent += "Type,MatchTime,PCTime,OUT_No,OUT_Name,IN_No,IN_Name,Reason\n";
         logs.forEach(l => {
             const type = (l.type || "").replace(/"/g, '""');
             const matchTime = l.matchTime || "";
@@ -263,7 +267,8 @@
             const outName = l.out ? `"${l.out.name.replace(/"/g, '""')}"` : "";
             const inNo = l.in ? l.in.no : "";
             const inName = l.in ? `"${l.in.name.replace(/"/g, '""')}"` : "";
-            csvContent += `${type},${matchTime},${pcTime},${outNo},${outName},${inNo},${inName}\n`;
+            const reason = `"${(l.reason || "").replace(/"/g, '""')}"`;
+            csvContent += `${type},${matchTime},${pcTime},${outNo},${outName},${inNo},${inName},${reason}\n`;
         });
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -281,7 +286,7 @@
         saveHistory();
         const timeStr = formatTime(elapsedTime);
         const PCStr = getPCNow();
-        logs.unshift({ type: 'End of first half', matchTime: timeStr, pcTime: PCStr, out: null, in: null, isPeriod: true });
+        logs.unshift({ id: Date.now(), type: 'End of first half', matchTime: timeStr, pcTime: PCStr, out: null, in: null, isPeriod: true });
         elapsedTime = 2400000;
         if (timerInterval) {
             clearInterval(timerInterval);
@@ -517,13 +522,13 @@
             bl.appendChild(div);
         });
         checkFRCompliance(); updateCatDisplay(); renderRes(); renderAdmin(); renderLogs();
-        saveToStorage(); // 状態が変わるたびに保存
+        saveToStorage(); 
     }
 
     function swapPlayers(sourceItem, targetItem) {
         const pA = sourceItem.player; const pB = targetItem.player;
         sourceItem.player = pB; targetItem.player = pA;
-        logs.unshift({ type: 'SWAP', matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: pA, in: pB, isColor: false });
+        logs.unshift({ id: Date.now(), type: 'SWAP', matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: pA, in: pB, isColor: false });
         render();
     }
 
@@ -582,7 +587,7 @@
         cleanupBench(r.out); cleanupBench(r.in);
         if (r.isCard) {
             const statusMap = { 'YELLOW': 'yc', 'RED': 'rc', 'OFR': 'ofr' };
-            logs.unshift({ type: r.type, matchTime: matchTime, pcTime: pcTime, out: r.out, in: null, isColor: true });
+            logs.unshift({ id: Date.now(), type: r.type, matchTime: matchTime, pcTime: pcTime, out: r.out, in: null, isColor: true, reason: "" });
             if (r.out) {
                 const updatedPlayer = {...r.out, status: statusMap[r.type]};
                 const eIdx = benchPlayers.indexOf(null); if (eIdx !== -1) benchPlayers[eIdx] = updatedPlayer; else benchPlayers.push(updatedPlayer);
@@ -595,7 +600,7 @@
             if (cF) {
                 const eIdx = benchPlayers.indexOf(null); if (eIdx !== -1) benchPlayers[eIdx] = cF; else benchPlayers.push(cF);
             }
-            logs.unshift({ type: 'Temporary (OUT)', matchTime: matchTime, pcTime: pcTime, out: cF, in: r.in });
+            logs.unshift({ id: Date.now(), type: 'Temporary (OUT)', matchTime: matchTime, pcTime: pcTime, out: cF, in: r.in });
         } else {
             if (r.out) {
                 let s = 'normal';
@@ -611,7 +616,7 @@
                 const idx = benchPlayers.indexOf(null); if (idx !== -1) benchPlayers[idx] = outPlayer; else benchPlayers.push(outPlayer);
             }
             f.player = r.in;
-            logs.unshift({ type: r.isFromAdmin ? `${r.adminType} (${r.type})` : r.type, matchTime: matchTime, pcTime: pcTime, out: r.out, in: r.in });
+            logs.unshift({ id: Date.now(), type: r.isFromAdmin ? `${r.adminType} (${r.type})` : r.type, matchTime: matchTime, pcTime: pcTime, out: r.out, in: r.in });
         }
         reservations = reservations.filter(x => x.id !== id); render();
     }
@@ -666,7 +671,7 @@
     }
     function setOfrDecision(id, d) { 
         saveHistory(); const c = adminCards.find(x => x.id === id); if(!c) return; c.ofrDecision = d; 
-        logs.unshift({ type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, isColor: true }); 
+        logs.unshift({ id: Date.now(), type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, isColor: true, reason: "" }); 
         if(d === 'RED UPGRADE') { c.nextAction = 'Replacement'; c.remainingMs = 1200000; renderAdmin(); openPlayerModal(id); } else { c.nextAction = 'Return'; render(); } 
     }
     
@@ -701,6 +706,15 @@
     function formatTime(ms) { const s = Math.floor(Math.max(0, ms) / 1000); return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
     function delItem(t, id) { saveHistory(); if(t==='res') reservations = reservations.filter(x=>x.id!==id); else adminCards = adminCards.filter(x=>x.id!==id); render(); }
     
+    // 理由更新用関数
+    function updateLogReason(logId, reason) {
+        const log = logs.find(l => l.id === logId);
+        if (log) {
+            log.reason = reason;
+            saveToStorage();
+        }
+    }
+
     function renderLogs() {
         const el = document.getElementById('log-list'); el.innerHTML = '';
         logs.forEach(l => {
@@ -708,7 +722,14 @@
             if (l.isPeriod) { cls += ' log-period'; div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})`; }
             else {
                 if (l.isColor) { if (l.type.includes('YELLOW')) cls += ' log-yc'; else if (l.type.includes('RED')) cls += ' log-rc'; else if (l.type.includes('OFR')) cls += ' log-ofr'; }
-                div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})<br>OUT:#${l.out?.no || '--'} ${l.out?.name || '(NONE)'}${l.in ? `<br>IN:#${l.in.no} ${l.in.name}` : ''}`;
+                
+                let html = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})<br>OUT:#${l.out?.no || '--'} ${l.out?.name || '(NONE)'}${l.in ? `<br>IN:#${l.in.no} ${l.in.name}` : ''}`;
+                
+                // 色付きカードのログの場合に理由入力欄を追加
+                if (l.isColor) {
+                    html += `<input type="text" class="log-reason-input" placeholder="反則内容・理由を入力..." value="${l.reason || ''}" onchange="updateLogReason(${l.id}, this.value)">`;
+                }
+                div.innerHTML = html;
             }
             div.className = cls; el.appendChild(div);
         });
