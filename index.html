@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rugby Sub Manager - Pro 2026 v3.9.9</title>
+    <title>Rugby Sub Manager - Pro 2026 v4.0.0</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -69,10 +69,10 @@
         .color-normal { color: #000 !important; }
         .color-medical { color: var(--text-medical) !important; }
         .color-tactical { color: var(--text-tactical) !important; }
-        .bg-injury { background-color: var(--bg-injury) !important; color: var(--text-injury) !important; pointer-events: none; }
+        .bg-injury { background-color: var(--bg-injury) !important; color: var(--text-injury) !important; pointer-events: none; cursor: not-allowed; }
         
         .status-yc { background-color: #fef9c3 !important; border-color: var(--color-yc) !important; }
-        .status-rc { background-color: #fee2e2 !important; border-color: var(--color-rc) !important; }
+        .status-rc { background-color: #fee2e2 !important; border-color: var(--color-rc) !important; pointer-events: none; cursor: not-allowed; }
         .status-ofr { background-color: #ffedd5 !important; border-color: var(--color-ofr) !important; }
         
         .res-card, .admin-card { background: #fff; border: 2px solid var(--border-color); border-left: 5px solid var(--bench-orange); border-radius: 8px; padding: 6px; margin-bottom: 8px; position: relative; font-size: 0.85rem; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
@@ -209,21 +209,16 @@
 
     /**
      * ハーフタイム跨ぎ処理 (End of first half)
-     * 仕様：時計を40:00に強制セットし停止させる。
-     * カードの残り時間は、tick()内で時計が動いている間のみ減るため、ここでは計算不要。
+     * 仕様：時計を40:00(2400000ms)に強制セットし停止。
      */
     function recordEndOfFirstHalf() {
         saveHistory();
         const timeStr = formatTime(elapsedTime);
         const PCStr = getPCNow();
         
-        // 1. ログ記録
         logs.unshift({ type: 'End of first half', matchTime: timeStr, pcTime: PCStr, out: null, in: null, isPeriod: true });
-
-        // 2. ストップウォッチを「40:00」(2400000ms)に強制セット
         elapsedTime = 2400000;
         
-        // 3. タイマーを停止状態にする
         if (timerInterval) {
             clearInterval(timerInterval);
             timerInterval = null;
@@ -232,7 +227,6 @@
             btn.className = 'btn-sw btn-toggle-start';
         }
         document.getElementById('timer-display').innerText = "40:00";
-        
         isSecondHalf = true;
         render();
         toggleSetting();
@@ -328,7 +322,6 @@
         
         const updateRemaining = (item) => {
             if (item.remainingMs !== undefined) {
-                // 医療用はHT中（停止中）も減る。カード系はタイマー稼働中のみ減る。
                 if (isMedicalType(item.type || item.adminType)) {
                     item.remainingMs = Math.max(0, item.remainingMs - delta);
                 } else if (timerInterval) {
@@ -357,7 +350,22 @@
     }
 
     function dropToRes(e) { e.preventDefault(); if (window.dragged?.source === 'field') { if (!validateFR(window.dragged.item.player, null, window.dragged.item.posId)) return; saveHistory(); createCardReservation(window.dragged.item.player, window.dragged.item.posId); } }
-    function dropToBenchArea(e) { e.preventDefault(); if (window.dragged?.source === 'field') { if (!validateFR(window.dragged.item.player, null, window.dragged.item.posId)) return; saveHistory(); reservations.push({ id: Date.now(), out: window.dragged.item.player, in: null, posId: window.dragged.item.posId, type: 'Temporary', isFromAdmin: false, isCard: false }); render(); } }
+    
+    /**
+     * ベンチエリアへのドロップ
+     * フィールドの選手が退場（RC）や怪我（Injury）の場合は通常予約できないようガード
+     */
+    function dropToBenchArea(e) { 
+        e.preventDefault(); 
+        if (window.dragged?.source === 'field') {
+            const p = window.dragged.item.player;
+            if (p && (p.status === 'rc' || p.status === 'injury')) return; // ガード
+            if (!validateFR(p, null, window.dragged.item.posId)) return;
+            saveHistory(); 
+            reservations.push({ id: Date.now(), out: p, in: null, posId: window.dragged.item.posId, type: 'Temporary', isFromAdmin: false, isCard: false }); 
+            render(); 
+        } 
+    }
 
     function processExcel(data) {
         saveHistory();
@@ -433,15 +441,20 @@
             let cls = getPlayerColorClass(p);
             let statusClass = p.status === 'yc' ? 'status-yc' : (p.status === 'rc' ? 'status-rc' : (p.status === 'ofr' ? 'status-ofr' : ''));
             const div = document.createElement('div');
-            div.className = `player-card ${['injury','rc'].includes(p.status) ? 'bg-injury' : ''} ${statusClass}`;
+            
+            // RCまたはInjuryの場合はドラッグ不可にする
+            const isDisabled = ['injury', 'rc'].includes(p.status);
+            div.className = `player-card ${p.status === 'injury' ? 'bg-injury' : ''} ${statusClass}`;
             div.innerHTML = `<span class="name-area ${cls}">#${p.no} ${p.name}</span>
                 ${p.cat ? `<span class="attr-tag cat-tag">${p.cat}</span>` : ''}
                 ${p.fr?.length ? `<span class="attr-tag fr-tag">${p.fr.join('')}</span>` : ''}`;
-            div.draggable = !['injury', 'rc'].includes(p.status);
-            div.ondragstart = () => window.dragged = {source:'bench', p, index: idx};
-            div.ondragover = e => e.preventDefault();
+            
+            div.draggable = !isDisabled;
+            div.ondragstart = () => { if(!isDisabled) window.dragged = {source:'bench', p, index: idx}; };
+            div.ondragover = e => { if(!isDisabled) e.preventDefault(); };
             div.ondrop = e => {
                 e.stopPropagation();
+                if (isDisabled) return;
                 if (window.dragged?.source === 'field') { 
                     if (!validateFR(window.dragged.item.player, p, window.dragged.item.posId)) return;
                     if (!validateCategory(window.dragged.item.player, p)) return;
