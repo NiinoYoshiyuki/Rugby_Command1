@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rugby Sub Manager - Pro 2026 v3.9.7</title>
+    <title>Rugby Sub Manager - Pro 2026 v3.9.9</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -191,7 +191,6 @@
     let elapsedTime = 0, timerInterval = null, lastTick = Date.now();
     let currentSelectionContext = null, historyStack = [], redoStack = [];
     
-    // ハーフタイム管理用フラグ
     let isSecondHalf = false;
     let catLimits = { abc: 4, c: 3 };
 
@@ -210,6 +209,8 @@
 
     /**
      * ハーフタイム跨ぎ処理 (End of first half)
+     * 仕様：時計を40:00に強制セットし停止させる。
+     * カードの残り時間は、tick()内で時計が動いている間のみ減るため、ここでは計算不要。
      */
     function recordEndOfFirstHalf() {
         saveHistory();
@@ -219,32 +220,20 @@
         // 1. ログ記録
         logs.unshift({ type: 'End of first half', matchTime: timeStr, pcTime: PCStr, out: null, in: null, isPeriod: true });
 
-        // 2. ロスタイム計算とカード残り時間の補正
-        // 前半40分(2400,000ms)を超えた分はすでにピッチ外で消化したとみなす
-        const lossTime = Math.max(0, elapsedTime - 2400000);
-        const cardTypes = ['YELLOW', 'RED', 'OFR'];
-
-        const adjustRemaining = (item) => {
-            if (item.remainingMs !== undefined) {
-                // 医療用(HIA/Blood)はHT中も進むのでここでは引かず、カード系のみロスタイム分を差し引く
-                const type = item.type || item.adminType;
-                if (cardTypes.includes(type)) {
-                    item.remainingMs = Math.max(0, item.remainingMs - lossTime);
-                }
-            }
-        };
-
-        adminCards.forEach(adjustRemaining);
-        reservations.forEach(r => { if(r.isFromAdmin) adjustRemaining(r); });
-
-        // 3. ストップウォッチを40:00にセットし停止
+        // 2. ストップウォッチを「40:00」(2400000ms)に強制セット
         elapsedTime = 2400000;
-        if (timerInterval) toggleTimer(); // タイマー停止
+        
+        // 3. タイマーを停止状態にする
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            const btn = document.getElementById('btn-toggle');
+            btn.innerText = 'START';
+            btn.className = 'btn-sw btn-toggle-start';
+        }
         document.getElementById('timer-display').innerText = "40:00";
         
-        // 4. 後半準備フラグ
         isSecondHalf = true;
-
         render();
         toggleSetting();
     }
@@ -296,7 +285,6 @@
         const newMs = (m * 60 + s) * 1000;
         const diff = newMs - elapsedTime;
         
-        // 手動修正された差分(diff)をカード残り時間に反映（既存ロジック維持）
         const isCardType = (type) => ['YELLOW','RED','OFR'].includes(type);
         adminCards.forEach(c => { if (isCardType(c.type) && c.remainingMs !== undefined) c.remainingMs = Math.max(0, c.remainingMs - diff); });
         reservations.forEach(r => { if (r.isFromAdmin && isCardType(r.adminType) && r.remainingMs !== undefined) r.remainingMs = Math.max(0, r.remainingMs - diff); });
@@ -328,8 +316,7 @@
 
     function resetTimer() {
         if (confirm("経過時間を00:00にリセットしますか？")) {
-            saveHistory(); elapsedTime = 0;
-            isSecondHalf = false; // フラグもリセット
+            saveHistory(); elapsedTime = 0; isSecondHalf = false;
             if (timerInterval) toggleTimer(); 
             document.getElementById('timer-display').innerText = "00:00";
         }
@@ -337,15 +324,14 @@
 
     function tick() {
         const now = Date.now(); const delta = now - lastTick; lastTick = now;
-        
-        // 試合タイマー加算
         if (timerInterval) elapsedTime += delta; 
         
-        // 管理カードのカウントダウン
         const updateRemaining = (item) => {
             if (item.remainingMs !== undefined) {
-                // 医療用(HIA等)は停止中(HT中)も減る。カード用はタイマー稼働中のみ減る。
-                if (isMedicalType(item.type || item.adminType) || timerInterval) {
+                // 医療用はHT中（停止中）も減る。カード系はタイマー稼働中のみ減る。
+                if (isMedicalType(item.type || item.adminType)) {
+                    item.remainingMs = Math.max(0, item.remainingMs - delta);
+                } else if (timerInterval) {
                     item.remainingMs = Math.max(0, item.remainingMs - delta);
                 }
             }
@@ -365,12 +351,8 @@
     function redo() { if (redoStack.length === 0) return; historyStack.push(getCurrentState()); applyState(redoStack.pop()); }
     function applyState(stateStr) { 
         const state = JSON.parse(stateStr); 
-        fieldPositions = state.fieldPositions; 
-        benchPlayers = state.benchPlayers; 
-        reservations = state.reservations; 
-        adminCards = state.adminCards; 
-        logs = state.logs; 
-        isSecondHalf = state.isSecondHalf || false;
+        fieldPositions = state.fieldPositions; benchPlayers = state.benchPlayers; reservations = state.reservations; 
+        adminCards = state.adminCards; logs = state.logs; isSecondHalf = state.isSecondHalf || false;
         render(); 
     }
 
@@ -404,8 +386,7 @@
 
     function validateFR(outP, inP, posId) {
         if (![1, 2, 3].includes(posId)) return true;
-        const isCompliant = inP && inP.fr && inP.fr.includes(String(posId));
-        if (!isCompliant) {
+        if (!inP || !inP.fr || !inP.fr.includes(String(posId))) {
             const msg = !inP ? `フロントロー(#${posId})が不在になります。アンコンテスト・スクラムになりますがよろしいですか？` : `交代選手(#${inP.no})はフロントロー(#${posId})の資格がありません。アンコンテスト・スクラムになりますがよろしいですか？`;
             return confirm(msg);
         }
@@ -436,8 +417,7 @@
                     if (!validateFR(item.player, window.dragged.p, item.posId)) return;
                     if (!validateCategory(item.player, window.dragged.p)) return;
                     saveHistory(); 
-                    const defaultType = p === null ? 'Temporary' : 'Tactical';
-                    createReservation(item.player, window.dragged.p, item.posId, window.dragged.index, defaultType);
+                    createReservation(item.player, window.dragged.p, item.posId, window.dragged.index, p === null ? 'Temporary' : 'Tactical');
                 } else if (window.dragged?.source === 'field') {
                     if (!validateFR(item.player, window.dragged.item.player, item.posId)) return;
                     if (!validateFR(window.dragged.item.player, item.player, window.dragged.item.posId)) return;
@@ -474,7 +454,6 @@
     }
 
     function swapPlayers(sourceItem, targetItem) {
-        if (sourceItem.posId === targetItem.posId) return;
         const pA = sourceItem.player; const pB = targetItem.player;
         sourceItem.player = pB; targetItem.player = pA;
         logs.unshift({ type: 'SWAP', matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: pA, in: pB, isColor: false });
@@ -513,12 +492,12 @@
                     <div class="card-row"><span>OUT</span><b class="${outColor}">${outName}</b></div>
                     <div class="card-row in-row"><span>IN</span><b class="${inColor}">${inName}</b></div>
                     ${!r.isFromAdmin ? `<div class="btn-group">
-                        <button class="${r.type==='Tactical'?'active-tactical':''}" onclick="setResType(${r.id},'Tactical')">Tactical</button>
-                        <button class="${r.type==='Injury'?'active-injury':''}" onclick="setResType(${r.id},'Injury')">Injury</button>
+                        <button class="${r.type==='Tactical'?'active-tactical':''}" onclick="setResType(${r.id},'Tactical')">Tac</button>
+                        <button class="${r.type==='Injury'?'active-injury':''}" onclick="setResType(${r.id},'Injury')">Inj</button>
                         <button class="${r.type==='Blood bin'?'active-medical':''}" onclick="setResType(${r.id},'Blood bin')">Blood</button>
                         <button class="${r.type==='HIA'?'active-medical':''}" onclick="setResType(${r.id},'HIA')">HIA</button>
                         <button class="${r.type==='B/HIA'?'active-medical':''}" onclick="setResType(${r.id},'B/HIA')">B/HIA</button>
-                        <button class="${r.type==='Temporary'?'active-temporary':''}" onclick="setResType(${r.id},'Temporary')">Temporary</button>
+                        <button class="${r.type==='Temporary'?'active-temporary':''}" onclick="setResType(${r.id},'Temp')">Temp</button>
                     </div>` : adminInfo}<button class="btn-exec" onclick="executeRes(${r.id})">Execute</button>`;
             }
             el.appendChild(div);
@@ -532,7 +511,6 @@
         const r = reservations.find(x => x.id === id); if (!r) return;
         const f = fieldPositions.find(p => p.posId === r.posId);
         const matchTime = formatTime(elapsedTime); const pcTime = getPCNow();
-        
         const cleanupBench = (p) => { if (p) benchPlayers = benchPlayers.map(x => (x && x.id === p.id) ? null : x); };
         cleanupBench(r.out); cleanupBench(r.in);
 
@@ -545,22 +523,19 @@
             }
             f.player = null;
             const initialRemaining = r.type === 'RED' ? 1200000 : 600000;
-            adminCards.push({ id: Date.now(), type: r.type, out: r.out, in: null, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: initialRemaining, nextAction: r.type === 'RED' ? 'Replacement' : 'Return', reason: '', ofrDecision: null });
+            adminCards.push({ id: Date.now(), type: r.type, out: r.out, in: null, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: initialRemaining, nextAction: r.type === 'RED' ? 'Replacement' : 'Return' });
         } else if (r.type === 'Temporary') {
-            const cF = f.player; const cB = r.in; 
-            if(cF && cF.status !== 'tactical') cF.status = 'normal';
-            f.player = cB;
+            const cF = f.player; f.player = r.in;
             if (cF) {
                 const eIdx = benchPlayers.indexOf(null); if (eIdx !== -1) benchPlayers[eIdx] = cF; else benchPlayers.push(cF);
             }
-            logs.unshift({ type: 'Temporary (OUT)', matchTime: matchTime, pcTime: pcTime, out: cF, in: cB, isColor: false });
+            logs.unshift({ type: 'Temporary (OUT)', matchTime: matchTime, pcTime: pcTime, out: cF, in: r.in });
         } else {
             if (r.out) {
-                let s = r.out.status === 'tactical' ? 'tactical' : 'normal';
+                let s = 'normal';
                 if(r.adminType === 'RED' || r.type === 'RED' || r.ofrDecision === 'RED UPGRADE') s = 'rc';
                 else if(r.type === 'Tactical') s = 'tactical';
                 else if(r.type === 'Injury') s = 'injury';
-                
                 if (isMedicalType(r.type) && !r.isFromAdmin) {
                     s = 'medical_red'; 
                     const mins = r.type === 'Blood bin' ? 15 : (r.type === 'HIA' ? 12 : 17);
@@ -586,8 +561,7 @@
                     if (dp) { 
                         if (!validateFR(c.out, dp, c.posId)) return;
                         if (!validateCategory(c.out, dp)) return; 
-                        saveHistory(); 
-                        c.in = dp; c.benchIdx = window.dragged.source === 'bench' ? window.dragged.index : undefined; renderAdmin(); 
+                        saveHistory(); c.in = dp; c.benchIdx = window.dragged.source === 'bench' ? window.dragged.index : undefined; renderAdmin(); 
                     }
                 }
             };
@@ -627,12 +601,8 @@
     }
     function setOfrDecision(id, d) { 
         saveHistory(); const c = adminCards.find(x => x.id === id); if(!c) return; c.ofrDecision = d; 
-        logs.unshift({ type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, in: null, isColor: true }); 
-        if(d === 'RED UPGRADE') { 
-            c.nextAction = 'Replacement'; 
-            c.remainingMs = 1200000; 
-            renderAdmin(); openPlayerModal(id); 
-        } else { c.nextAction = 'Return'; render(); } 
+        logs.unshift({ type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, isColor: true }); 
+        if(d === 'RED UPGRADE') { c.nextAction = 'Replacement'; c.remainingMs = 1200000; renderAdmin(); openPlayerModal(id); } else { c.nextAction = 'Return'; render(); } 
     }
     
     function openPlayerModal(cid) { 
@@ -641,14 +611,7 @@
         benchPlayers.forEach((p, idx) => { 
             if (p !== null && !['rc', 'injury'].includes(p.status)) { 
                 const b = document.createElement('button'); b.className = 'modal-player-btn'; b.innerText = `#${p.no} ${p.name}`; 
-                b.onclick = () => { 
-                    if (card) {
-                        if (!validateFR(card.out, p, card.posId)) return;
-                        if (!validateCategory(card.out, p)) return; 
-                        card.in = p; card.benchIdx = idx; 
-                    }
-                    closeModal(); renderAdmin(); 
-                }; 
+                b.onclick = () => { if (card) { if (!validateFR(card.out, p, card.posId)) return; if (!validateCategory(card.out, p)) return; card.in = p; card.benchIdx = idx; } closeModal(); renderAdmin(); }; 
                 list.appendChild(b); 
             } 
         }); 
@@ -658,20 +621,14 @@
     function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; }
 
     function returnToRes(id) { 
-        saveHistory(); 
-        const c = adminCards.find(x => x.id === id); if (!c) return; 
+        saveHistory(); const c = adminCards.find(x => x.id === id); if (!c) return; 
         if (['YELLOW', 'RED', 'OFR'].includes(c.type) && ['Tactical', 'Injury', 'Replacement'].includes(c.nextAction) && !c.in) { alert("交代する選手を選択してください。"); return; } 
         let outP, inP; 
-        if (c.nextAction === 'Return') { 
-            outP = c.in; inP = c.out; 
-        } else { 
-            outP = c.out; inP = c.in; 
-        } 
+        if (c.nextAction === 'Return') { outP = c.in; inP = c.out; } else { outP = c.out; inP = c.in; } 
         reservations.push({ 
             id: Date.now(), out: outP, in: inP, posId: c.posId, benchIdx: c.benchIdx, 
             type: c.nextAction === 'Replacement' ? 'Tactical' : c.nextAction, 
-            isFromAdmin: true, adminType: c.type, origMatchTime: c.matchTime, 
-            remainingMs: c.remainingMs, ofrDecision: c.ofrDecision 
+            isFromAdmin: true, adminType: c.type, remainingMs: c.remainingMs, ofrDecision: c.ofrDecision 
         }); 
         adminCards = adminCards.filter(x => x.id !== id); render(); 
     }
@@ -682,21 +639,13 @@
     function renderLogs() {
         const el = document.getElementById('log-list'); el.innerHTML = '';
         logs.forEach(l => {
-            const div = document.createElement('div'); 
-            let cls = 'log-item';
-            if (l.isPeriod) {
-                cls += ' log-period';
-                div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})`;
-            } else {
-                if (l.isColor) { 
-                    if (l.type.includes('YELLOW')) cls += ' log-yc'; 
-                    else if (l.type.includes('RED')) cls += ' log-rc'; 
-                    else if (l.type.includes('OFR')) cls += ' log-ofr'; 
-                }
+            const div = document.createElement('div'); let cls = 'log-item';
+            if (l.isPeriod) { cls += ' log-period'; div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})`; }
+            else {
+                if (l.isColor) { if (l.type.includes('YELLOW')) cls += ' log-yc'; else if (l.type.includes('RED')) cls += ' log-rc'; else if (l.type.includes('OFR')) cls += ' log-ofr'; }
                 div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})<br>OUT:#${l.out?.no || '--'} ${l.out?.name || '(NONE)'}${l.in ? `<br>IN:#${l.in.no} ${l.in.name}` : ''}`;
             }
-            div.className = cls;
-            el.appendChild(div);
+            div.className = cls; el.appendChild(div);
         });
     }
 
