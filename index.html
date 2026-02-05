@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rugby Sub Manager - Pro 2026 v3.9.5</title>
+    <title>Rugby Sub Manager - Pro 2026 v3.9.7</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -80,7 +80,6 @@
         .card-row { margin-bottom: 3px; display: flex; align-items: center; gap: 15px; }
         .card-row span:first-child { width: 35px; font-weight: 800; color: var(--text-sub); font-size: 0.75rem; text-align: left; }
         .card-row b { flex-grow: 1; text-align: left; color: #000; }
-        .card-row.in-row b { color: var(--field-green); }
         
         .btn-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 4px 0; }
         .btn-group button { font-size: 0.75rem; padding: 4px 0; cursor: pointer; font-weight: 800; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; transition: 0.2s; position: relative; z-index: 10; }
@@ -104,7 +103,6 @@
         .log-yc { background-color: var(--color-yc); color: #000; }
         .log-rc { background-color: var(--color-rc); color: #fff; }
         .log-ofr { background-color: var(--color-ofr); color: #fff; }
-        /* Record Period Logic */
         .log-period { color: #dc2626; font-weight: 900; }
         
         #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
@@ -192,7 +190,9 @@
     let benchPlayers = [], reservations = [], adminCards = [], logs = [];
     let elapsedTime = 0, timerInterval = null, lastTick = Date.now();
     let currentSelectionContext = null, historyStack = [], redoStack = [];
-
+    
+    // ハーフタイム管理用フラグ
+    let isSecondHalf = false;
     let catLimits = { abc: 4, c: 3 };
 
     function toggleSetting() {
@@ -208,11 +208,44 @@
         updateCatDisplay();
     }
 
+    /**
+     * ハーフタイム跨ぎ処理 (End of first half)
+     */
     function recordEndOfFirstHalf() {
         saveHistory();
         const timeStr = formatTime(elapsedTime);
-        logs.unshift({ type: 'End of first half', matchTime: timeStr, pcTime: getPCNow(), out: null, in: null, isPeriod: true });
-        renderLogs();
+        const PCStr = getPCNow();
+        
+        // 1. ログ記録
+        logs.unshift({ type: 'End of first half', matchTime: timeStr, pcTime: PCStr, out: null, in: null, isPeriod: true });
+
+        // 2. ロスタイム計算とカード残り時間の補正
+        // 前半40分(2400,000ms)を超えた分はすでにピッチ外で消化したとみなす
+        const lossTime = Math.max(0, elapsedTime - 2400000);
+        const cardTypes = ['YELLOW', 'RED', 'OFR'];
+
+        const adjustRemaining = (item) => {
+            if (item.remainingMs !== undefined) {
+                // 医療用(HIA/Blood)はHT中も進むのでここでは引かず、カード系のみロスタイム分を差し引く
+                const type = item.type || item.adminType;
+                if (cardTypes.includes(type)) {
+                    item.remainingMs = Math.max(0, item.remainingMs - lossTime);
+                }
+            }
+        };
+
+        adminCards.forEach(adjustRemaining);
+        reservations.forEach(r => { if(r.isFromAdmin) adjustRemaining(r); });
+
+        // 3. ストップウォッチを40:00にセットし停止
+        elapsedTime = 2400000;
+        if (timerInterval) toggleTimer(); // タイマー停止
+        document.getElementById('timer-display').innerText = "40:00";
+        
+        // 4. 後半準備フラグ
+        isSecondHalf = true;
+
+        render();
         toggleSetting();
     }
 
@@ -262,9 +295,12 @@
         const s = parseInt(document.getElementById('edit-sec').value) || 0;
         const newMs = (m * 60 + s) * 1000;
         const diff = newMs - elapsedTime;
+        
+        // 手動修正された差分(diff)をカード残り時間に反映（既存ロジック維持）
         const isCardType = (type) => ['YELLOW','RED','OFR'].includes(type);
         adminCards.forEach(c => { if (isCardType(c.type) && c.remainingMs !== undefined) c.remainingMs = Math.max(0, c.remainingMs - diff); });
         reservations.forEach(r => { if (r.isFromAdmin && isCardType(r.adminType) && r.remainingMs !== undefined) r.remainingMs = Math.max(0, r.remainingMs - diff); });
+        
         elapsedTime = newMs; lastTick = Date.now();
         document.getElementById('timer-display').innerText = formatTime(elapsedTime);
         render(); hideTimeEdit();
@@ -293,6 +329,7 @@
     function resetTimer() {
         if (confirm("経過時間を00:00にリセットしますか？")) {
             saveHistory(); elapsedTime = 0;
+            isSecondHalf = false; // フラグもリセット
             if (timerInterval) toggleTimer(); 
             document.getElementById('timer-display').innerText = "00:00";
         }
@@ -300,19 +337,42 @@
 
     function tick() {
         const now = Date.now(); const delta = now - lastTick; lastTick = now;
+        
+        // 試合タイマー加算
         if (timerInterval) elapsedTime += delta; 
-        adminCards.forEach(c => { if (c.remainingMs !== undefined) { if (isMedicalType(c.type) || timerInterval) c.remainingMs = Math.max(0, c.remainingMs - delta); } });
-        reservations.forEach(r => { if (r.remainingMs !== undefined) { if (isMedicalType(r.adminType) || timerInterval) r.remainingMs = Math.max(0, r.remainingMs - delta); } });
+        
+        // 管理カードのカウントダウン
+        const updateRemaining = (item) => {
+            if (item.remainingMs !== undefined) {
+                // 医療用(HIA等)は停止中(HT中)も減る。カード用はタイマー稼働中のみ減る。
+                if (isMedicalType(item.type || item.adminType) || timerInterval) {
+                    item.remainingMs = Math.max(0, item.remainingMs - delta);
+                }
+            }
+        };
+
+        adminCards.forEach(updateRemaining);
+        reservations.forEach(r => { if(r.isFromAdmin) updateRemaining(r); });
+
         document.getElementById('timer-display').innerText = formatTime(elapsedTime);
         adminCards.forEach(c => { const el = document.getElementById(`admin-time-${c.id}`); if (el) el.innerText = formatTime(c.remainingMs); });
         reservations.forEach(r => { if(r.isFromAdmin) { const el = document.getElementById(`res-time-${r.id}`); if(el) el.innerText = formatTime(r.remainingMs); }});
     }
 
-    function getCurrentState() { return JSON.stringify({ fieldPositions, benchPlayers, reservations, adminCards, logs }); }
+    function getCurrentState() { return JSON.stringify({ fieldPositions, benchPlayers, reservations, adminCards, logs, isSecondHalf }); }
     function saveHistory() { historyStack.push(getCurrentState()); if (historyStack.length > 50) historyStack.shift(); redoStack = []; }
     function undo() { if (historyStack.length === 0) return; redoStack.push(getCurrentState()); applyState(historyStack.pop()); }
     function redo() { if (redoStack.length === 0) return; historyStack.push(getCurrentState()); applyState(redoStack.pop()); }
-    function applyState(stateStr) { const state = JSON.parse(stateStr); fieldPositions = state.fieldPositions; benchPlayers = state.benchPlayers; reservations = state.reservations; adminCards = state.adminCards; logs = state.logs; render(); }
+    function applyState(stateStr) { 
+        const state = JSON.parse(stateStr); 
+        fieldPositions = state.fieldPositions; 
+        benchPlayers = state.benchPlayers; 
+        reservations = state.reservations; 
+        adminCards = state.adminCards; 
+        logs = state.logs; 
+        isSecondHalf = state.isSecondHalf || false;
+        render(); 
+    }
 
     function dropToRes(e) { e.preventDefault(); if (window.dragged?.source === 'field') { if (!validateFR(window.dragged.item.player, null, window.dragged.item.posId)) return; saveHistory(); createCardReservation(window.dragged.item.player, window.dragged.item.posId); } }
     function dropToBenchArea(e) { e.preventDefault(); if (window.dragged?.source === 'field') { if (!validateFR(window.dragged.item.player, null, window.dragged.item.posId)) return; saveHistory(); reservations.push({ id: Date.now(), out: window.dragged.item.player, in: null, posId: window.dragged.item.posId, type: 'Temporary', isFromAdmin: false, isCard: false }); render(); } }
@@ -352,14 +412,21 @@
         return true;
     }
 
+    function getPlayerColorClass(p) {
+        if (!p) return 'color-normal';
+        if (p.status === 'medical_red') return 'color-medical';
+        if (p.status === 'tactical') return 'color-tactical';
+        return 'color-normal';
+    }
+
     function render() {
         const fl = document.getElementById('field-list'); fl.innerHTML = '';
         fieldPositions.forEach(item => {
             const div = document.createElement('div'); div.className = 'player-card';
             const p = item.player;
             div.innerHTML = `<span class="pos-label">${item.posId}</span><span class="name-area color-normal">#${p ? p.no+' '+p.name : '---'}</span>
-                ${p?.cat ? `<span class="attr-tag cat-tag">${p.cat}</span>` : ''}
-                ${p?.fr?.length ? `<span class="attr-tag fr-tag">${p.fr.join('')}</span>` : ''}`;
+                ${p?.cat ? `<span class=\"attr-tag cat-tag\">${p.cat}</span>` : ''}
+                ${p?.fr?.length ? `<span class=\"attr-tag fr-tag\">${p.fr.join('')}</span>` : ''}`;
             div.draggable = !!p; 
             div.ondragstart = () => { if(p) window.dragged = {source:'field', item}; }; 
             div.ondragover = e => e.preventDefault();
@@ -383,7 +450,7 @@
         const bl = document.getElementById('bench-list'); bl.innerHTML = '';
         benchPlayers.forEach((p, idx) => {
             if (p === null) return;
-            let cls = p.status === 'medical_red' ? 'color-medical' : (p.status === 'tactical' ? 'color-tactical' : 'color-normal');
+            let cls = getPlayerColorClass(p);
             let statusClass = p.status === 'yc' ? 'status-yc' : (p.status === 'rc' ? 'status-rc' : (p.status === 'ofr' ? 'status-ofr' : ''));
             const div = document.createElement('div');
             div.className = `player-card ${['injury','rc'].includes(p.status) ? 'bg-injury' : ''} ${statusClass}`;
@@ -409,7 +476,6 @@
     function swapPlayers(sourceItem, targetItem) {
         if (sourceItem.posId === targetItem.posId) return;
         const pA = sourceItem.player; const pB = targetItem.player;
-        if(pA) pA.status = 'normal'; if(pB) pB.status = 'normal';
         sourceItem.player = pB; targetItem.player = pA;
         logs.unshift({ type: 'SWAP', matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: pA, in: pB, isColor: false });
         render();
@@ -425,11 +491,13 @@
         const el = document.getElementById('res-list'); el.innerHTML = '';
         reservations.forEach(r => {
             const div = document.createElement('div'); div.className = 'res-card';
+            const outColor = getPlayerColorClass(r.out);
+            const inColor = getPlayerColorClass(r.in);
             const outName = r.out ? `#${r.out.no} ${r.out.name}` : '(NONE)';
             const inName = r.in ? `#${r.in.no} ${r.in.name}` : '(NONE)';
             if (r.isCard) {
                 div.innerHTML = `<button class="btn-delete" onclick="delItem('res',${r.id})">×</button>
-                    <div class="card-row"><span>OUT</span><b class="color-normal">${outName}</b></div>
+                    <div class="card-row"><span>OUT</span><b class="${outColor}">${outName}</b></div>
                     <div class="btn-group">
                         <button class="${r.type==='YELLOW'?'active-yc':''}" onclick="setResType(${r.id},'YELLOW')">YELLOW</button>
                         <button class="${r.type==='RED'?'active-rc':''}" onclick="setResType(${r.id},'RED')">RED</button>
@@ -442,8 +510,8 @@
                     adminInfo = `<div style="padding:4px 0; font-weight:800; color:var(--text-medical); border-top:1px dashed #ddd;">Pending: ${r.adminType} → ${r.type}${timeStr}</div>`;
                 }
                 div.innerHTML = `<button class="btn-delete" onclick="delItem('res',${r.id})">×</button>
-                    <div class="card-row"><span>OUT</span><b class="color-normal">${outName}</b></div>
-                    <div class="card-row in-row"><span>IN</span><b>${inName}</b></div>
+                    <div class="card-row"><span>OUT</span><b class="${outColor}">${outName}</b></div>
+                    <div class="card-row in-row"><span>IN</span><b class="${inColor}">${inName}</b></div>
                     ${!r.isFromAdmin ? `<div class="btn-group">
                         <button class="${r.type==='Tactical'?'active-tactical':''}" onclick="setResType(${r.id},'Tactical')">Tactical</button>
                         <button class="${r.type==='Injury'?'active-injury':''}" onclick="setResType(${r.id},'Injury')">Injury</button>
@@ -464,8 +532,10 @@
         const r = reservations.find(x => x.id === id); if (!r) return;
         const f = fieldPositions.find(p => p.posId === r.posId);
         const matchTime = formatTime(elapsedTime); const pcTime = getPCNow();
+        
         const cleanupBench = (p) => { if (p) benchPlayers = benchPlayers.map(x => (x && x.id === p.id) ? null : x); };
         cleanupBench(r.out); cleanupBench(r.in);
+
         if (r.isCard) {
             const statusMap = { 'YELLOW': 'yc', 'RED': 'rc', 'OFR': 'ofr' };
             logs.unshift({ type: r.type, matchTime: matchTime, pcTime: pcTime, out: r.out, in: null, isColor: true });
@@ -477,7 +547,8 @@
             const initialRemaining = r.type === 'RED' ? 1200000 : 600000;
             adminCards.push({ id: Date.now(), type: r.type, out: r.out, in: null, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: initialRemaining, nextAction: r.type === 'RED' ? 'Replacement' : 'Return', reason: '', ofrDecision: null });
         } else if (r.type === 'Temporary') {
-            const cF = f.player; const cB = r.in; if(cF) cF.status = 'normal'; if(cB) cB.status = 'normal';
+            const cF = f.player; const cB = r.in; 
+            if(cF && cF.status !== 'tactical') cF.status = 'normal';
             f.player = cB;
             if (cF) {
                 const eIdx = benchPlayers.indexOf(null); if (eIdx !== -1) benchPlayers[eIdx] = cF; else benchPlayers.push(cF);
@@ -485,18 +556,20 @@
             logs.unshift({ type: 'Temporary (OUT)', matchTime: matchTime, pcTime: pcTime, out: cF, in: cB, isColor: false });
         } else {
             if (r.out) {
-                let s = 'normal';
+                let s = r.out.status === 'tactical' ? 'tactical' : 'normal';
                 if(r.adminType === 'RED' || r.type === 'RED' || r.ofrDecision === 'RED UPGRADE') s = 'rc';
                 else if(r.type === 'Tactical') s = 'tactical';
                 else if(r.type === 'Injury') s = 'injury';
+                
                 if (isMedicalType(r.type) && !r.isFromAdmin) {
-                    s = 'medical_red'; const mins = r.type === 'Blood bin' ? 15 : (r.type === 'HIA' ? 12 : 17);
-                    adminCards.push({ id: Date.now(), type: r.type, out: {...r.out, status:'medical_red'}, in: r.in, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: mins * 60000, nextAction: 'Return' });
+                    s = 'medical_red'; 
+                    const mins = r.type === 'Blood bin' ? 15 : (r.type === 'HIA' ? 12 : 17);
+                    adminCards.push({ id: Date.now(), type: r.type, out: {...r.out, status: s}, in: r.in, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: mins * 60000, nextAction: 'Return' });
                 }
                 const outPlayer = {...r.out, status: s};
                 const idx = benchPlayers.indexOf(null); if (idx !== -1) benchPlayers[idx] = outPlayer; else benchPlayers.push(outPlayer);
             }
-            if(r.in) r.in.status = 'normal'; f.player = r.in;
+            f.player = r.in;
             logs.unshift({ type: r.isFromAdmin ? `${r.adminType} (${r.type})` : r.type, matchTime: matchTime, pcTime: pcTime, out: r.out, in: r.in });
         }
         reservations = reservations.filter(x => x.id !== id); render();
@@ -521,11 +594,14 @@
             const displayTime = formatTime(c.remainingMs);
             const pOutName = c.out ? `#${c.out.no} ${c.out.name}` : '(NONE)';
             const pInName = c.in ? `#${c.in.no} ${c.in.name}` : '(NONE)';
+            const outColor = getPlayerColorClass(c.out);
+            const inColor = getPlayerColorClass(c.in);
+
             if (['YELLOW','RED','OFR'].includes(c.type)) {
                 let content = `<button class="btn-delete" onclick="delItem('admin',${c.id})">×</button>
                     <div class="admin-header"><span style="font-weight:900;">${c.type}</span><span class="admin-times">${c.matchTime}/${c.pcTime}</span><span class="admin-countdown" id="admin-time-${c.id}">${displayTime}</span></div>
-                    <div class="card-row"><span>OUT</span><b class="color-normal">${pOutName}</b></div>
-                    <div class="card-row in-row"><span>IN</span><b>${pInName}</b></div>`;
+                    <div class="card-row"><span>OUT</span><b class="${outColor}">${pOutName}</b></div>
+                    <div class="card-row in-row"><span>IN</span><b class="${inColor}">${pInName}</b></div>`;
                 if(c.type === 'OFR' && !c.ofrDecision) { content += `<div class="btn-group" style="grid-template-columns: 1fr 1fr; margin-top:4px;"><button onclick="setOfrDecision(${c.id},'YELLOW STAY')">YELLOW STAY</button><button onclick="setOfrDecision(${c.id},'RED UPGRADE')">RED UPGRADE</button></div>`; } 
                 else {
                     const mode = (c.ofrDecision === 'RED UPGRADE' || c.type === 'RED') ? 'RED' : 'YELLOW';
@@ -535,8 +611,8 @@
             } else {
                 let inner = `<button class="btn-delete" onclick="delItem('admin',${c.id})">×</button>
                     <div class="admin-header"><span style="font-weight:900;">${c.type}</span><span class="admin-times">${c.matchTime}/${c.pcTime}</span><span class="admin-countdown" id="admin-time-${c.id}">${displayTime}</span></div>`;
-                if (c.nextAction === 'Return') inner += `<div class="card-row"><span>OUT</span><b>${pInName}</b></div><div class="card-row in-row"><span>IN</span><b class="color-medical">${pOutName}</b></div>`;
-                else inner += `<div class="card-row"><span>STAY</span><b>${pOutName}</b></div><div class="card-row"><span>FIELD</span><b>${pInName} (Keep)</b></div>`;
+                if (c.nextAction === 'Return') inner += `<div class="card-row"><span>OUT</span><b class="${inColor}">${pInName}</b></div><div class="card-row in-row"><span>IN</span><b class="${outColor}">${pOutName}</b></div>`;
+                else inner += `<div class="card-row"><span>STAY</span><b class="${outColor}">${pOutName}</b></div><div class="card-row"><span>FIELD</span><b class="${inColor}">${pInName} (Keep)</b></div>`;
                 inner += `<div class="btn-group"><button class="${c.nextAction==='Return'?'active-return':''}" onclick="setAdminNext(${c.id},'Return')">Return</button><button class="${c.nextAction==='Tactical'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Tactical')">Tac</button><button class="${c.nextAction==='Injury'?'active-injury':''}" onclick="setAdminNext(${c.id},'Injury')">Inj</button></div><button class="btn-go-res" onclick="returnToRes(${c.id})">Go to reservation</button>`;
                 div.innerHTML = inner;
             }
@@ -580,7 +656,26 @@
     }
 
     function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; }
-    function returnToRes(id) { saveHistory(); const c = adminCards.find(x => x.id === id); if (!c) return; if (['YELLOW', 'RED', 'OFR'].includes(c.type) && ['Tactical', 'Injury', 'Replacement'].includes(c.nextAction) && !c.in) { alert("交代する選手を選択してください。"); return; } let outP, inP; if (c.nextAction === 'Return') { outP = c.in; inP = c.out; } else { outP = c.out; inP = c.in; } reservations.push({ id: Date.now(), out: outP, in: inP, posId: c.posId, benchIdx: c.benchIdx, type: c.nextAction === 'Replacement' ? 'Tactical' : c.nextAction, isFromAdmin: true, adminType: c.type, origMatchTime: c.matchTime, remainingMs: c.remainingMs, ofrDecision: c.ofrDecision }); adminCards = adminCards.filter(x => x.id !== id); render(); }
+
+    function returnToRes(id) { 
+        saveHistory(); 
+        const c = adminCards.find(x => x.id === id); if (!c) return; 
+        if (['YELLOW', 'RED', 'OFR'].includes(c.type) && ['Tactical', 'Injury', 'Replacement'].includes(c.nextAction) && !c.in) { alert("交代する選手を選択してください。"); return; } 
+        let outP, inP; 
+        if (c.nextAction === 'Return') { 
+            outP = c.in; inP = c.out; 
+        } else { 
+            outP = c.out; inP = c.in; 
+        } 
+        reservations.push({ 
+            id: Date.now(), out: outP, in: inP, posId: c.posId, benchIdx: c.benchIdx, 
+            type: c.nextAction === 'Replacement' ? 'Tactical' : c.nextAction, 
+            isFromAdmin: true, adminType: c.type, origMatchTime: c.matchTime, 
+            remainingMs: c.remainingMs, ofrDecision: c.ofrDecision 
+        }); 
+        adminCards = adminCards.filter(x => x.id !== id); render(); 
+    }
+
     function formatTime(ms) { const s = Math.floor(Math.max(0, ms) / 1000); return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
     function delItem(t, id) { saveHistory(); if(t==='res') reservations = reservations.filter(x=>x.id!==id); else adminCards = adminCards.filter(x=>x.id!==id); render(); }
     
