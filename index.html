@@ -78,7 +78,7 @@
         .status-ofr { background-color: #ffedd5 !important; border-color: var(--color-ofr) !important; }
         
         .res-card, .admin-card { background: #fff; border: 2px solid var(--border-color); border-left: 5px solid var(--bench-orange); border-radius: 8px; padding: 10px; margin-bottom: 8px; position: relative; font-size: 0.85rem; box-shadow: 0 2px 6px rgba(0,0,0,0.05); min-height: fit-content; }
-        .btn-delete { position: absolute; top: 4px; right: 4px; background: #fee2e2; color: #ef4444; border: none; border-radius: 4px; cursor: pointer; padding: 1px 5px; font-weight: 800; z-index: 20; font-size: 0.7rem; }
+        .btn-delete { position: absolute; top: 4px; right: 4px; background: #fee2e2; color: #ef4444; border: none; border-radius: 4px; cursor: pointer; padding: 1px 5px; font-weight: 800; z-index: 20; font-size: 0.75rem; }
         .card-row { margin-bottom: 3px; display: flex; align-items: center; gap: 15px; }
         .card-row span:first-child { width: 35px; font-weight: 800; color: var(--text-sub); font-size: 0.75rem; text-align: left; }
         .card-row b { flex-grow: 1; text-align: left; color: #000; }
@@ -118,7 +118,6 @@
         .fr-hist-table th, .fr-hist-table td { border: 1px solid #ddd; padding: 12px 8px; text-align: center; }
         .fr-hist-table th { background: #f8fafc; font-size: 0.75rem; color: var(--text-sub); }
 
-        /* iPad用ドラッグ中のクローン表示 */
         #drag-clone { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.8; display: none; }
     </style>
 </head>
@@ -216,7 +215,6 @@
 
     const STORAGE_KEY = "rugby_sub_manager_state_v430";
 
-    // iPad タッチ対応用グローバル変数
     let touchDraggedElement = null;
     let touchDraggedData = null;
 
@@ -251,19 +249,18 @@
         }
     }
 
-    // タッチイベント処理 (iPad対応)
     function initTouchDrag(el, data) {
         el.addEventListener('touchstart', (e) => {
             if (e.target.tagName === 'BUTTON' || e.target.classList.contains('pos-label')) return;
             touchDraggedElement = el;
             touchDraggedData = data;
+            window.dragged = data;
             const clone = el.cloneNode(true);
             const cloneContainer = document.getElementById('drag-clone');
             cloneContainer.innerHTML = '';
             cloneContainer.appendChild(clone);
             cloneContainer.style.display = 'block';
             updateTouchPos(e);
-            window.dragged = data;
         }, {passive: false});
 
         el.addEventListener('touchmove', (e) => {
@@ -301,7 +298,6 @@
         const benchArea = target.closest('#bench-area');
         const resArea = target.closest('#res-area');
         const fieldCard = target.closest('#field-list .player-card');
-        const benchCard = target.closest('#bench-list .player-card');
         const adminCard = target.closest('.admin-card');
 
         if (draggedData.source === 'field') {
@@ -313,31 +309,41 @@
                 const p = sourceItem.player;
                 if (p && (p.status === 'rc' || p.status === 'injury')) return;
                 if (!validateFR(p, null, sourceItem.posId)) return;
-                saveHistory(); reservations.push({ id: Date.now(), out: p, in: null, posId: sourceItem.posId, type: 'Temporary', isFromAdmin: false, isCard: false });
+                saveHistory(); 
+                reservations.push({ id: Date.now(), out: p, in: null, posId: sourceItem.posId, type: 'Temporary', isFromAdmin: false, isCard: false });
             } else if (fieldCard) {
-                const targetPosId = parseInt(fieldCard.querySelector('.pos-label').innerText);
-                const targetItem = fieldPositions.find(f => f.posId === targetPosId);
-                if (targetItem && sourceItem !== targetItem) {
-                    if (!validateFR(sourceItem.player, targetItem.player, sourceItem.posId)) return;
-                    if (!validateFR(targetItem.player, sourceItem.player, targetItem.posId)) return;
-                    saveHistory(); swapPlayers(sourceItem, targetItem);
+                const label = fieldCard.querySelector('.pos-label');
+                if (label) {
+                    const targetPosId = parseInt(label.innerText);
+                    const targetItem = fieldPositions.find(f => f.posId === targetPosId);
+                    if (targetItem && sourceItem !== targetItem) {
+                        if (!validateFR(sourceItem.player, targetItem.player, sourceItem.posId)) return;
+                        if (!validateFR(targetItem.player, sourceItem.player, targetItem.posId)) return;
+                        saveHistory(); swapPlayers(sourceItem, targetItem);
+                    }
                 }
             }
         } else if (draggedData.source === 'bench') {
             const sourcePlayer = draggedData.p;
             if (fieldCard) {
-                const targetPosId = parseInt(fieldCard.querySelector('.pos-label').innerText);
-                const targetItem = fieldPositions.find(f => f.posId === targetPosId);
-                if (!validateFR(targetItem.player, sourcePlayer, targetPosId)) return;
-                if (!validateCategory(targetItem.player, sourcePlayer)) return;
-                saveHistory(); createReservation(targetItem.player, sourcePlayer, targetPosId, draggedData.index, targetItem.player === null ? 'Temporary' : 'Tactical');
+                const label = fieldCard.querySelector('.pos-label');
+                if (label) {
+                    const targetPosId = parseInt(label.innerText);
+                    const targetItem = fieldPositions.find(f => f.posId === targetPosId);
+                    if (!validateFR(targetItem.player, sourcePlayer, targetPosId)) return;
+                    if (!validateCategory(targetItem.player, sourcePlayer)) return;
+                    saveHistory(); createReservation(targetItem.player, sourcePlayer, targetPosId, draggedData.index, targetItem.player === null ? 'Temporary' : 'Tactical');
+                }
             } else if (adminCard) {
-                const adminId = parseInt(adminCard.querySelector('.btn-delete').getAttribute('onclick').match(/\d+/)[0]);
-                const c = adminCards.find(x => x.id === adminId);
-                if (c) {
-                    if (!validateFR(c.out, sourcePlayer, c.posId)) return;
-                    if (!validateCategory(c.out, sourcePlayer)) return;
-                    saveHistory(); c.in = sourcePlayer; c.benchIdx = draggedData.index;
+                const delBtn = adminCard.querySelector('.btn-delete');
+                if (delBtn) {
+                    const adminId = parseInt(delBtn.getAttribute('onclick').match(/\d+/)[0]);
+                    const c = adminCards.find(x => x.id === adminId);
+                    if (c) {
+                        if (!validateFR(c.out, sourcePlayer, c.posId)) return;
+                        if (!validateCategory(c.out, sourcePlayer)) return;
+                        saveHistory(); c.in = sourcePlayer; c.benchIdx = draggedData.index;
+                    }
                 }
             }
         }
@@ -547,20 +553,6 @@
         adminCards = state.adminCards; logs = state.logs; isSecondHalf = state.isSecondHalf || false;
         elapsedTime = state.elapsedTime || 0; frHistory = state.frHistory || { 1: [], 2: [], 3: [] };
         render(); 
-    }
-
-    function dropToRes(e) { e.preventDefault(); if (window.dragged?.source === 'field') { if (!validateFR(window.dragged.item.player, null, window.dragged.item.posId)) return; saveHistory(); createCardReservation(window.dragged.item.player, window.dragged.item.posId); } }
-    
-    function dropToBenchArea(e) { 
-        e.preventDefault(); 
-        if (window.dragged?.source === 'field') {
-            const p = window.dragged.item.player;
-            if (p && (p.status === 'rc' || p.status === 'injury')) return;
-            if (!validateFR(p, null, window.dragged.item.posId)) return;
-            saveHistory(); 
-            reservations.push({ id: Date.now(), out: p, in: null, posId: window.dragged.item.posId, type: 'Temporary', isFromAdmin: false, isCard: false }); 
-            render(); 
-        } 
     }
 
     function processExcel(data) {
