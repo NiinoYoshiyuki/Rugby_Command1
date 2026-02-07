@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rugby Sub Manager - Pro 2026 v4.2.0</title>
+    <title>Rugby Sub Manager - Pro 2026 v4.3.0</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -23,7 +23,7 @@
         .btn-setting { background: #f1f5f9; border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 8px; font-weight: 800; font-size: 0.75rem; cursor: pointer; color: var(--text-sub); transition: 0.2s; }
         .btn-setting:hover { background: #e2e8f0; }
 
-        .cat-info-bar { font-size: 9px; font-weight: 800; color: var(--text-sub); margin-top: 2px; display: flex; gap: 10px; }
+        .cat-info-inline { font-size: 10px; font-weight: 800; color: var(--text-sub); margin-left: 8px; text-transform: none; letter-spacing: 0; }
         
         #setting-popup { display: none; position: absolute; top: 100%; right: 0; background: #fff; border: 2px solid var(--text-main); border-radius: 12px; padding: 15px; z-index: 6500; box-shadow: 0 10px 30px rgba(0,0,0,0.3); width: 220px; margin-top: 10px; }
         .setting-menu-btn { width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 8px; background: #f8fafc; font-weight: 800; cursor: pointer; text-align: left; font-size: 0.85rem; }
@@ -33,7 +33,11 @@
         .cat-limit-popup input { width: 40px; padding: 4px; font-size: 1rem; font-weight: 900; text-align: center; }
         .cat-limit-popup label { font-size: 11px; font-weight: 800; }
 
-        #uncontested-alert { display: none; background: #ef4444; color: white; padding: 4px 12px; border-radius: 6px; font-weight: 900; font-size: 0.9rem; position: absolute; left: 50%; transform: translateX(-50%); animation: blink 1s infinite; }
+        /* アラートの基本スタイル */
+        #uncontested-alert { display: none; background: #ef4444; color: white; padding: 4px 12px; border-radius: 6px; font-weight: 900; font-size: 0.9rem; margin-right: 10px; white-space: nowrap; }
+        
+        /* 点滅が必要な時用のクラス */
+        .blink-alert { animation: blink 1s infinite; }
         @keyframes blink { 0% {opacity: 1;} 50% {opacity: 0.6;} 100% {opacity: 1;} }
 
         .stopwatch-container { position: relative; display: flex; align-items: center; }
@@ -55,12 +59,13 @@
         
         main { display: flex; gap: 10px; padding: 10px; flex-grow: 1; overflow: hidden; }
         .column { background: var(--bg-column); border-radius: 12px; border: 1px solid var(--border-color); display: flex; flex-direction: column; overflow: hidden; height: 100%; width: 280px; flex-shrink: 0; }
-        .col-res-admin { width: 420px; }
-        h2 { font-size: 0.8rem; padding: 8px; background: #f8fafc; margin: 0; text-align: center; font-weight: 900; color: var(--text-sub); border-bottom: 1px solid var(--border-color); text-transform: uppercase; letter-spacing: 1px; }
+        .col-res-admin { width: 440px; }
+        h2 { font-size: 0.8rem; padding: 8px; background: #f8fafc; margin: 0; text-align: center; font-weight: 900; color: var(--text-sub); border-bottom: 1px solid var(--border-color); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; }
         .scroll-area { flex-grow: 1; overflow-y: auto; padding: 8px; }
         
         .player-card { height: 34px; margin-bottom: 4px; border: 1px solid var(--border-color); border-radius: 6px; display: flex; align-items: center; background: #fff; padding: 0 6px; font-weight: 700; font-size: 0.85rem; cursor: grab; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.05); position: relative; }
-        .pos-label { width: 22px; color: var(--text-sub); font-size: 0.7rem; border-right: 1px solid #eee; margin-right: 8px; text-align: center; flex-shrink: 0; }
+        .pos-label { width: 22px; color: var(--text-sub); font-size: 0.75rem; border-right: 1px solid #eee; margin-right: 8px; text-align: center; flex-shrink: 0; cursor: pointer; font-weight: 900; }
+        .pos-label:hover { color: var(--text-medical); }
         .name-area { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left; }
         .attr-tag { font-size: 0.6rem; padding: 2px 5px; border-radius: 4px; margin-left: 4px; font-weight: 900; color: #fff; flex-shrink: 0; }
         .cat-tag { background: #64748b; }
@@ -75,14 +80,14 @@
         .status-rc { background-color: #fee2e2 !important; border-color: var(--color-rc) !important; pointer-events: none; cursor: not-allowed; }
         .status-ofr { background-color: #ffedd5 !important; border-color: var(--color-ofr) !important; }
         
-        .res-card, .admin-card { background: #fff; border: 2px solid var(--border-color); border-left: 5px solid var(--bench-orange); border-radius: 8px; padding: 6px; margin-bottom: 8px; position: relative; font-size: 0.85rem; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+        .res-card, .admin-card { background: #fff; border: 2px solid var(--border-color); border-left: 5px solid var(--bench-orange); border-radius: 8px; padding: 10px; margin-bottom: 8px; position: relative; font-size: 0.85rem; box-shadow: 0 2px 6px rgba(0,0,0,0.05); min-height: fit-content; }
         .btn-delete { position: absolute; top: 4px; right: 4px; background: #fee2e2; color: #ef4444; border: none; border-radius: 4px; cursor: pointer; padding: 1px 5px; font-weight: 800; z-index: 20; font-size: 0.7rem; }
         .card-row { margin-bottom: 3px; display: flex; align-items: center; gap: 15px; }
         .card-row span:first-child { width: 35px; font-weight: 800; color: var(--text-sub); font-size: 0.75rem; text-align: left; }
         .card-row b { flex-grow: 1; text-align: left; color: #000; }
         
-        .btn-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 4px 0; }
-        .btn-group button { font-size: 0.75rem; padding: 4px 0; cursor: pointer; font-weight: 800; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; transition: 0.2s; position: relative; z-index: 10; }
+        .btn-group { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 8px 0; }
+        .btn-group button { font-size: 1rem; padding: 8px 2px; cursor: pointer; font-weight: 800; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; transition: 0.2s; position: relative; z-index: 10; white-space: nowrap; overflow: hidden; }
         .btn-group button.active-tactical { background: var(--text-tactical); color: #fff; border-color: var(--text-tactical); }
         .btn-group button.active-injury { background: #64748b; color: #fff; border-color: #64748b; }
         .btn-group button.active-medical { background: var(--text-medical); color: #fff; border-color: var(--text-medical); }
@@ -100,19 +105,21 @@
         .admin-countdown { font-size: 1.1rem; color: var(--text-medical); font-weight: 900; font-family: 'JetBrains Mono'; }
         
         .log-item { font-size: 11px; border-bottom: 1px solid #eee; padding: 6px; line-height: 1.4; border-radius: 4px; margin-bottom: 2px; }
-        .log-yc { background-color: var(--color-yc); color: #000; }
-        .log-rc { background-color: var(--color-rc); color: #fff; }
-        .log-ofr { background-color: var(--color-ofr); color: #fff; }
+        .log-yc { background-color: var(--color-yc); color: #000; cursor: pointer; }
+        .log-rc { background-color: var(--color-rc); color: #fff; cursor: pointer; }
+        .log-ofr { background-color: var(--color-ofr); color: #fff; cursor: pointer; }
         .log-period { color: #dc2626; font-weight: 900; }
-
-        /* 追加スタイル */
-        .log-reason-input { width: 100%; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 4px; font-size: 10px; font-weight: 700; background: rgba(255,255,255,0.7); margin-top: 4px; box-sizing: border-box; }
-        .log-rc .log-reason-input { background: rgba(255,255,255,0.2); color: #fff; border-color: rgba(255,255,255,0.3); }
-        .log-rc .log-reason-input::placeholder { color: rgba(255,255,255,0.6); }
+        .log-reason-text { font-style: italic; font-weight: 700; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 2px; display: block; margin-top: 2px; }
         
-        #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
-        .modal-content { background: white; padding: 20px; border-radius: 12px; width: 300px; max-height: 80vh; overflow-y: auto; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 7000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+        .modal-content { background: white; padding: 20px; border-radius: 12px; width: 320px; max-height: 80vh; overflow-y: auto; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
         .modal-player-btn { width: 100%; padding: 10px; margin-bottom: 5px; border: 1px solid var(--border-color); border-radius: 6px; background: white; font-weight: 700; cursor: pointer; text-align: left; }
+        
+        .reason-edit-area { width: 100%; padding: 10px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 10px; }
+
+        .fr-hist-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-weight: 800; }
+        .fr-hist-table th, .fr-hist-table td { border: 1px solid #ddd; padding: 12px 8px; text-align: center; }
+        .fr-hist-table th { background: #f8fafc; font-size: 0.75rem; color: var(--text-sub); }
     </style>
 </head>
 <body onload="loadFromStorage()">
@@ -121,12 +128,9 @@
     <div class="header-top">
         <div>
             <div id="team-name-display">Drop Excel to Load Team</div>
-            <div id="cat-info" class="cat-info-bar">
-                A2+B+C: 0/4 | C: 0/3 (Loading limits...)
-            </div>
         </div>
-        <div id="uncontested-alert">Uncontested scrum</div>
         <div class="header-right">
+            <div id="uncontested-alert">Uncontested scrum</div>
             <div class="stopwatch-container">
                 <div class="stopwatch-panel">
                     <div id="timer-display" ondblclick="showTimeEdit()">00:00</div>
@@ -151,6 +155,7 @@
                 <button class="btn-setting" onclick="toggleSetting()">SETTING</button>
                 <div id="setting-popup">
                     <button class="setting-menu-btn" onclick="showCatEdit()">CATEGORY</button>
+                    <button class="setting-menu-btn" onclick="showFRHistory()">FR HISTORY</button>
                     <button class="setting-menu-btn" onclick="recordEndOfFirstHalf()">End of first half</button>
                     <button class="setting-menu-btn" onclick="exportLogs()" style="color:var(--text-tactical)">EXPORT LOG (CSV)</button>
                     <hr>
@@ -171,7 +176,10 @@
 </header>
 
 <main>
-    <div class="column"><h2>Field</h2><div id="field-list" class="scroll-area"></div></div>
+    <div class="column">
+        <h2>FIELD <span id="cat-info" class="cat-info-inline">A2+B+C: 0/4 | C: 0/3</span></h2>
+        <div id="field-list" class="scroll-area"></div>
+    </div>
     <div class="column" ondragover="e=>e.preventDefault()" ondrop="dropToBenchArea(event)">
         <h2>Bench</h2><div id="bench-list" class="scroll-area"></div>
     </div>
@@ -188,8 +196,10 @@
 
 <div id="modal-overlay">
     <div class="modal-content">
-        <h3>Select Player</h3><div id="modal-player-list"></div>
-        <button onclick="closeModal()" style="margin-top:10px; padding:8px 15px; border-radius:6px; border:none; background:#64748b; color:white; font-weight:800; cursor:pointer;">Cancel</button>
+        <h3 id="modal-title">Select Player</h3>
+        <div id="modal-body-content"></div>
+        <div id="modal-player-list"></div>
+        <button onclick="closeModal()" style="margin-top:10px; padding:8px 15px; border-radius:6px; border:none; background:#64748b; color:white; font-weight:800; cursor:pointer;">Close</button>
     </div>
 </div>
 
@@ -200,14 +210,14 @@
     let currentSelectionContext = null, historyStack = [], redoStack = [];
     let isSecondHalf = false;
     let catLimits = { abc: 4, c: 3 };
+    let frHistory = { 1: [], 2: [], 3: [] };
 
-    // --- ローカルストレージ機能 ---
-    const STORAGE_KEY = "rugby_sub_manager_state";
+    const STORAGE_KEY = "rugby_sub_manager_state_v430";
 
     function saveToStorage() {
         const state = {
             fieldPositions, benchPlayers, reservations, adminCards, logs,
-            elapsedTime, isSecondHalf, catLimits,
+            elapsedTime, isSecondHalf, catLimits, frHistory,
             teamName: document.getElementById('team-name-display').innerText
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -226,6 +236,7 @@
                 elapsedTime = state.elapsedTime || 0;
                 isSecondHalf = state.isSecondHalf || false;
                 catLimits = state.catLimits || { abc: 4, c: 3 };
+                frHistory = state.frHistory || { 1: [], 2: [], 3: [] };
                 document.getElementById('team-name-display').innerText = state.teamName || "Drop Excel to Load Team";
                 document.getElementById('limit-abc').value = catLimits.abc;
                 document.getElementById('limit-c').value = catLimits.c;
@@ -235,7 +246,7 @@
     }
 
     function allClear() {
-        if (confirm("全てのデータを初期化します。よろしいですか？\n(読み込んだチーム名、選手配置、ログ、タイマーが全て消去されます)")) {
+        if (confirm("全てのデータを初期化します。よろしいですか？")) {
             localStorage.removeItem(STORAGE_KEY);
             location.reload(); 
         }
@@ -244,6 +255,35 @@
     function toggleSetting() {
         const p = document.getElementById('setting-popup');
         p.style.display = (p.style.display === 'block') ? 'none' : 'block';
+    }
+
+    function showFRHistory() {
+        toggleSetting();
+        document.getElementById('modal-title').innerText = "FR HISTORY";
+        document.getElementById('modal-player-list').innerHTML = "";
+        const body = document.getElementById('modal-body-content');
+        
+        let html = `<table class="fr-hist-table">
+            <tr><th></th><th>1人目</th><th>2人目</th></tr>`;
+        [1, 2, 3].forEach(id => {
+            const h = frHistory[id] || [];
+            html += `<tr>
+                <td>FR${id}</td>
+                <td>(${h[0] || ""})</td>
+                <td>(${h[1] || ""})</td>
+            </tr>`;
+        });
+        html += `</table>`;
+        body.innerHTML = html;
+        document.getElementById('modal-overlay').style.display = 'flex';
+    }
+
+    function clearFRHistByPos(posId) {
+        if (confirm(`FR${posId} の履歴を削除しますか？`)) {
+            saveHistory();
+            frHistory[posId] = [];
+            render();
+        }
     }
 
     function showCatEdit() { document.getElementById('cat-edit-popup').style.display = 'block'; }
@@ -267,7 +307,7 @@
             const outName = l.out ? `"${l.out.name.replace(/"/g, '""')}"` : "";
             const inNo = l.in ? l.in.no : "";
             const inName = l.in ? `"${l.in.name.replace(/"/g, '""')}"` : "";
-            const reason = `"${(l.reason || "").replace(/"/g, '""')}"`;
+            const reason = l.reason ? `"${l.reason.replace(/"/g, '""')}"` : "";
             csvContent += `${type},${matchTime},${pcTime},${outNo},${outName},${inNo},${inName},${reason}\n`;
         });
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -310,7 +350,8 @@
                 if (c === 'C') countC++;
             }
         });
-        document.getElementById('cat-info').innerText = `A2+B+C: ${countABC}/${catLimits.abc} | C: ${countC}/${catLimits.c}`;
+        const el = document.getElementById('cat-info');
+        if (el) el.innerText = `A2+B+C: ${countABC}/${catLimits.abc} | C: ${countC}/${catLimits.c}`;
     }
 
     function validateCategory(outP, inP) {
@@ -327,8 +368,8 @@
         });
         const nextABC = curABC + 1;
         const nextC = curC + (inCat === 'C' ? 1 : 0);
-        if (nextABC > catLimits.abc) return confirm(`[カテゴリー制限] A2+B+Cが上限(${catLimits.abc}人)を超えます。よろしいですか？`);
-        if (nextC > catLimits.c) return confirm(`[カテゴリー制限] Cが上限(${catLimits.c}人)を超えます。よろしいですか？`);
+        if (nextABC > catLimits.abc) return confirm(`[カテゴリー制限] A2+B+Cが上限を超えます。よろしいですか？`);
+        if (nextC > catLimits.c) return confirm(`[カテゴリー制限] Cが上限を超えます。よろしいですか？`);
         return true;
     }
 
@@ -360,7 +401,7 @@
         return [d.getHours(), d.getMinutes(), d.getSeconds()].map(v => String(v).padStart(2,'0')).join(':');
     }
 
-    function isMedicalType(type) { return ['Blood bin', 'HIA', 'B/HIA'].includes(type); }
+    function isMedicalType(type) { return ['Blood bin', 'HIA', 'B / HIA', 'Injury / F'].includes(type); }
 
     function toggleTimer() {
         const btn = document.getElementById('btn-toggle');
@@ -403,7 +444,7 @@
         reservations.forEach(r => { if(r.isFromAdmin) { const el = document.getElementById(`res-time-${r.id}`); if(el) el.innerText = formatTime(r.remainingMs); }});
     }
 
-    function getCurrentState() { return JSON.stringify({ fieldPositions, benchPlayers, reservations, adminCards, logs, isSecondHalf, elapsedTime }); }
+    function getCurrentState() { return JSON.stringify({ fieldPositions, benchPlayers, reservations, adminCards, logs, isSecondHalf, elapsedTime, frHistory }); }
     function saveHistory() { historyStack.push(getCurrentState()); if (historyStack.length > 50) historyStack.shift(); redoStack = []; }
     function undo() { if (historyStack.length === 0) return; redoStack.push(getCurrentState()); applyState(historyStack.pop()); }
     function redo() { if (redoStack.length === 0) return; historyStack.push(getCurrentState()); applyState(redoStack.pop()); }
@@ -411,7 +452,7 @@
         const state = JSON.parse(stateStr); 
         fieldPositions = state.fieldPositions; benchPlayers = state.benchPlayers; reservations = state.reservations; 
         adminCards = state.adminCards; logs = state.logs; isSecondHalf = state.isSecondHalf || false;
-        elapsedTime = state.elapsedTime || 0;
+        elapsedTime = state.elapsedTime || 0; frHistory = state.frHistory || { 1: [], 2: [], 3: [] };
         render(); 
     }
 
@@ -446,12 +487,55 @@
     }
 
     function checkFRCompliance() {
-        let uncontested = false;
+        let isUncontested = false;
+        let globalMinPlayers = 15;
+
         [1, 2, 3].forEach(posId => {
             const p = fieldPositions.find(fp => fp.posId === posId)?.player;
-            if (!p || !p.fr || !p.fr.includes(String(posId))) { uncontested = true; }
+            if (!p || !p.fr || !p.fr.includes(String(posId))) {
+                isUncontested = true;
+            }
         });
-        document.getElementById('uncontested-alert').style.display = uncontested ? 'block' : 'none';
+
+        const alertEl = document.getElementById('uncontested-alert');
+        if (isUncontested) {
+            for (let i = 1; i <= 3; i++) {
+                const hist = frHistory[i] || [];
+                const p1 = hist[0]; 
+                const p2 = hist[1]; 
+
+                if (p1 && p2) {
+                    if (['Injury / F', 'BLOOD', 'HIA', 'B / HIA'].includes(p1)) {
+                        if (['YC', 'RC', 'OFR', 'OFR DECISION: RED UPGRADE'].includes(p2)) globalMinPlayers = Math.min(globalMinPlayers, 13);
+                    } 
+                    else if (p1 === 'Injury') {
+                        if (p1 === p2) globalMinPlayers = Math.min(globalMinPlayers, 14);
+                        if (['YC', 'RC', 'OFR', 'OFR DECISION: RED UPGRADE'].includes(p2)) globalMinPlayers = Math.min(globalMinPlayers, 13);
+                    } 
+                    else if (['YC', 'RC', 'OFR', 'OFR DECISION: RED UPGRADE'].includes(p1)) {
+                        if (['Injury / F', 'BLOOD', 'HIA', 'B / HIA'].includes(p2)) globalMinPlayers = Math.min(globalMinPlayers, 14);
+                        if (p2 === 'Injury') globalMinPlayers = Math.min(globalMinPlayers, 13);
+                        if (['YC', 'RC', 'OFR', 'OFR DECISION: RED UPGRADE'].includes(p2)) globalMinPlayers = Math.min(globalMinPlayers, 12);
+                    }
+                } else if (p1) {
+                    if (['YC', 'RC', 'OFR', 'OFR DECISION: RED UPGRADE'].includes(p1)) globalMinPlayers = Math.min(globalMinPlayers, 14);
+                }
+            }
+
+            let currentFieldCount = fieldPositions.filter(f => f.player !== null).length;
+            alertEl.innerHTML = `Uncontested scrum (${globalMinPlayers} players)`;
+            alertEl.style.display = 'block';
+
+            // 修正箇所：現在の人数が規定人数より多い場合のみ点滅させる
+            if (currentFieldCount > globalMinPlayers) {
+                alertEl.classList.add('blink-alert');
+            } else {
+                alertEl.classList.remove('blink-alert');
+            }
+        } else {
+            alertEl.style.display = 'none';
+            alertEl.classList.remove('blink-alert');
+        }
     }
 
     function validateFR(outP, inP, posId) {
@@ -475,7 +559,7 @@
         fieldPositions.forEach(item => {
             const div = document.createElement('div'); div.className = 'player-card';
             const p = item.player;
-            div.innerHTML = `<span class="pos-label">${item.posId}</span><span class="name-area color-normal">#${p ? p.no+' '+p.name : '---'}</span>
+            div.innerHTML = `<span class="pos-label" ${[1,2,3].includes(item.posId) ? `onclick="clearFRHistByPos(${item.posId})"` : ""}>${item.posId}</span><span class="name-area color-normal">#${p ? p.no+' '+p.name : '---'}</span>
                 ${p?.cat ? `<span class=\"attr-tag cat-tag\">${p.cat}</span>` : ''}
                 ${p?.fr?.length ? `<span class=\"attr-tag fr-tag\">${p.fr.join('')}</span>` : ''}`;
             div.draggable = !!p; 
@@ -528,7 +612,7 @@
     function swapPlayers(sourceItem, targetItem) {
         const pA = sourceItem.player; const pB = targetItem.player;
         sourceItem.player = pB; targetItem.player = pA;
-        logs.unshift({ id: Date.now(), type: 'SWAP', matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: pA, in: pB, isColor: false });
+        logs.unshift({ id: Date.now(), type: 'SWAP', matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: pA, in: pB });
         render();
     }
 
@@ -549,7 +633,7 @@
             if (r.isCard) {
                 div.innerHTML = `<button class="btn-delete" onclick="delItem('res',${r.id})">×</button>
                     <div class="card-row"><span>OUT</span><b class="${outColor}">${outName}</b></div>
-                    <div class="btn-group">
+                    <div class="btn-group" style="grid-template-columns: repeat(3, 1fr);">
                         <button class="${r.type==='YELLOW'?'active-yc':''}" onclick="setResType(${r.id},'YELLOW')">YELLOW</button>
                         <button class="${r.type==='RED'?'active-rc':''}" onclick="setResType(${r.id},'RED')">RED</button>
                         <button class="${r.type==='OFR'?'active-ofr':''}" onclick="setResType(${r.id},'OFR')">OFR</button>
@@ -563,13 +647,16 @@
                 div.innerHTML = `<button class="btn-delete" onclick="delItem('res',${r.id})">×</button>
                     <div class="card-row"><span>OUT</span><b class="${outColor}">${outName}</b></div>
                     <div class="card-row in-row"><span>IN</span><b class="${inColor}">${inName}</b></div>
-                    ${!r.isFromAdmin ? `<div class="btn-group">
-                        <button class="${r.type==='Tactical'?'active-tactical':''}" onclick="setResType(${r.id},'Tactical')">Tac</button>
-                        <button class="${r.type==='Injury'?'active-injury':''}" onclick="setResType(${r.id},'Injury')">Inj</button>
-                        <button class="${r.type==='Blood bin'?'active-medical':''}" onclick="setResType(${r.id},'Blood bin')">Blood</button>
+                    ${!r.isFromAdmin ? `
+                    <div class="btn-group">
+                        <button class="${r.type==='Tactical'?'active-tactical':''}" onclick="setResType(${r.id},'Tactical')">Tactical</button>
+                        <button class="${r.type==='Injury'?'active-injury':''}" onclick="setResType(${r.id},'Injury')">Injury</button>
+                        <button class="${r.type==='Injury / F'?'active-medical':''}" onclick="setResType(${r.id},'Injury / F')">Injury / F</button>
+                        <div style="grid-column: span 1; background:transparent;"></div>
+                        <button class="${r.type==='Blood bin'?'active-medical':''}" onclick="setResType(${r.id},'Blood bin')">BLOOD</button>
                         <button class="${r.type==='HIA'?'active-medical':''}" onclick="setResType(${r.id},'HIA')">HIA</button>
-                        <button class="${r.type==='B/HIA'?'active-medical':''}" onclick="setResType(${r.id},'B/HIA')">B/HIA</button>
-                        <button class="${r.type==='Temporary'?'active-temporary':''}" onclick="setResType(${r.id},'Temp')">Temp</button>
+                        <button class="${r.type==='B / HIA'?'active-medical':''}" onclick="setResType(${r.id},'B / HIA')">B / HIA</button>
+                        <button class="${r.type==='Temporary'?'active-temporary':''}" onclick="setResType(${r.id},'Temporary')">Temporary</button>
                     </div>` : adminInfo}<button class="btn-exec" onclick="executeRes(${r.id})">Execute</button>`;
             }
             el.appendChild(div);
@@ -585,6 +672,20 @@
         const matchTime = formatTime(elapsedTime); const pcTime = getPCNow();
         const cleanupBench = (p) => { if (p) benchPlayers = benchPlayers.map(x => (x && x.id === p.id) ? null : x); };
         cleanupBench(r.out); cleanupBench(r.in);
+
+        if ([1, 2, 3].includes(r.posId)) {
+            const forbidden = ['SWAP', 'Temporary'];
+            if (!forbidden.includes(r.type)) {
+                let displayType = r.type;
+                if(r.type === 'Blood bin') displayType = 'BLOOD';
+                if(r.type === 'Injury') displayType = 'Injury';
+                if(r.type === 'YELLOW') displayType = 'YC';
+                if(r.type === 'RED') displayType = 'RC';
+                if(r.type === 'B / HIA') displayType = 'B / HIA';
+                frHistory[r.posId].push(displayType);
+            }
+        }
+
         if (r.isCard) {
             const statusMap = { 'YELLOW': 'yc', 'RED': 'rc', 'OFR': 'ofr' };
             logs.unshift({ id: Date.now(), type: r.type, matchTime: matchTime, pcTime: pcTime, out: r.out, in: null, isColor: true, reason: "" });
@@ -607,10 +708,13 @@
                 if(r.adminType === 'RED' || r.type === 'RED' || r.ofrDecision === 'RED UPGRADE') s = 'rc';
                 else if(r.type === 'Tactical') s = 'tactical';
                 else if(r.type === 'Injury') s = 'injury';
-                if (isMedicalType(r.type) && !r.isFromAdmin) {
+                
+                if (isMedicalType(r.type) && !r.isFromAdmin && r.type !== 'Injury / F') {
                     s = 'medical_red'; 
-                    const mins = r.type === 'Blood bin' ? 15 : (r.type === 'HIA' ? 12 : 17);
+                    const mins = r.type === 'Blood bin' ? 15 : 12;
                     adminCards.push({ id: Date.now(), type: r.type, out: {...r.out, status: s}, in: r.in, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: mins * 60000, nextAction: 'Return' });
+                } else if(r.type === 'Injury / F') {
+                    s = 'medical_red';
                 }
                 const outPlayer = {...r.out, status: s};
                 const idx = benchPlayers.indexOf(null); if (idx !== -1) benchPlayers[idx] = outPlayer; else benchPlayers.push(outPlayer);
@@ -649,7 +753,7 @@
                 if(c.type === 'OFR' && !c.ofrDecision) { content += `<div class="btn-group" style="grid-template-columns: 1fr 1fr; margin-top:4px;"><button onclick="setOfrDecision(${c.id},'YELLOW STAY')">YELLOW STAY</button><button onclick="setOfrDecision(${c.id},'RED UPGRADE')">RED UPGRADE</button></div>`; } 
                 else {
                     const mode = (c.ofrDecision === 'RED UPGRADE' || c.type === 'RED') ? 'RED' : 'YELLOW';
-                    content += `<div class="btn-group">${mode === 'YELLOW' ? `<button class="${c.nextAction==='Return'?'active-return':''}" onclick="setAdminNext(${c.id},'Return')">Return</button><button class="${c.nextAction==='Tactical'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Tactical')">Tac</button><button class="${c.nextAction==='Injury'?'active-injury':''}" onclick="setAdminNext(${c.id},'Injury')">Inj</button>` : `<button style="grid-column: span 3;" class="${c.nextAction==='Replacement'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Replacement')">Replacement</button>`}</div><button class="btn-go-res" onclick="returnToRes(${c.id})">Go to reservation</button>`;
+                    content += `<div class="btn-group" style="grid-template-columns: repeat(3, 1fr);">${mode === 'YELLOW' ? `<button class="${c.nextAction==='Return'?'active-return':''}" onclick="setAdminNext(${c.id},'Return')">Return</button><button class="${c.nextAction==='Tactical'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Tactical')">Tac</button><button class="${c.nextAction==='Injury'?'active-injury':''}" onclick="setAdminNext(${c.id},'Injury')">Inj</button>` : `<button style="grid-column: span 3;" class="${c.nextAction==='Replacement'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Replacement')">Replacement</button>`}</div><button class="btn-go-res" onclick="returnToRes(${c.id})">Go to reservation</button>`;
                 }
                 div.innerHTML = content;
             } else {
@@ -657,7 +761,7 @@
                     <div class="admin-header"><span style="font-weight:900;">${c.type}</span><span class="admin-times">${c.matchTime}/${c.pcTime}</span><span class="admin-countdown" id="admin-time-${c.id}">${displayTime}</span></div>`;
                 if (c.nextAction === 'Return') inner += `<div class="card-row"><span>OUT</span><b class="${inColor}">${pInName}</b></div><div class="card-row in-row"><span>IN</span><b class="${outColor}">${pOutName}</b></div>`;
                 else inner += `<div class="card-row"><span>STAY</span><b class="${outColor}">${pOutName}</b></div><div class="card-row"><span>FIELD</span><b class="${inColor}">${pInName} (Keep)</b></div>`;
-                inner += `<div class="btn-group"><button class="${c.nextAction==='Return'?'active-return':''}" onclick="setAdminNext(${c.id},'Return')">Return</button><button class="${c.nextAction==='Tactical'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Tactical')">Tac</button><button class="${c.nextAction==='Injury'?'active-injury':''}" onclick="setAdminNext(${c.id},'Injury')">Inj</button></div><button class="btn-go-res" onclick="returnToRes(${c.id})">Go to reservation</button>`;
+                inner += `<div class="btn-group" style="grid-template-columns: repeat(3, 1fr);"><button class="${c.nextAction==='Return'?'active-return':''}" onclick="setAdminNext(${c.id},'Return')">Return</button><button class="${c.nextAction==='Tactical'?'active-tactical':''}" onclick="setAdminNext(${c.id},'Tactical')">Tac</button><button class="${c.nextAction==='Injury'?'active-injury':''}" onclick="setAdminNext(${c.id},'Injury')">Inj</button></div><button class="btn-go-res" onclick="returnToRes(${c.id})">Go to reservation</button>`;
                 div.innerHTML = inner;
             }
             el.appendChild(div);
@@ -669,14 +773,27 @@
         if(['Tactical','Injury','Replacement'].includes(act) && !isMedicalType(c.type)) { renderAdmin(); openPlayerModal(id); } 
         else { if (act === 'Return' && ['YELLOW','RED','OFR'].includes(c.type)) c.in = null; renderAdmin(); } 
     }
+    
     function setOfrDecision(id, d) { 
         saveHistory(); const c = adminCards.find(x => x.id === id); if(!c) return; c.ofrDecision = d; 
         logs.unshift({ id: Date.now(), type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, isColor: true, reason: "" }); 
-        if(d === 'RED UPGRADE') { c.nextAction = 'Replacement'; c.remainingMs = 1200000; renderAdmin(); openPlayerModal(id); } else { c.nextAction = 'Return'; render(); } 
+        if(d === 'RED UPGRADE') { 
+            c.nextAction = 'Replacement'; 
+            c.remainingMs = 1200000; 
+            if([1,2,3].includes(c.posId)) frHistory[c.posId].push('OFR DECISION: RED UPGRADE');
+            render(); 
+            openPlayerModal(id); 
+        } else { 
+            c.nextAction = 'Return'; 
+            render(); 
+        } 
     }
     
     function openPlayerModal(cid) { 
-        currentSelectionContext = cid; const list = document.getElementById('modal-player-list'); list.innerHTML = ''; 
+        currentSelectionContext = cid;
+        document.getElementById('modal-title').innerText = "Select Player";
+        document.getElementById('modal-body-content').innerHTML = "";
+        const list = document.getElementById('modal-player-list'); list.innerHTML = ''; 
         const card = adminCards.find(x => x.id === cid); 
         benchPlayers.forEach((p, idx) => { 
             if (p !== null && !['rc', 'injury'].includes(p.status)) { 
@@ -706,33 +823,44 @@
     function formatTime(ms) { const s = Math.floor(Math.max(0, ms) / 1000); return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); }
     function delItem(t, id) { saveHistory(); if(t==='res') reservations = reservations.filter(x=>x.id!==id); else adminCards = adminCards.filter(x=>x.id!==id); render(); }
     
-    // 理由更新用関数
-    function updateLogReason(logId, reason) {
-        const log = logs.find(l => l.id === logId);
-        if (log) {
-            log.reason = reason;
-            saveToStorage();
-        }
-    }
-
     function renderLogs() {
         const el = document.getElementById('log-list'); el.innerHTML = '';
         logs.forEach(l => {
             const div = document.createElement('div'); let cls = 'log-item';
             if (l.isPeriod) { cls += ' log-period'; div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})`; }
             else {
-                if (l.isColor) { if (l.type.includes('YELLOW')) cls += ' log-yc'; else if (l.type.includes('RED')) cls += ' log-rc'; else if (l.type.includes('OFR')) cls += ' log-ofr'; }
-                
-                let html = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})<br>OUT:#${l.out?.no || '--'} ${l.out?.name || '(NONE)'}${l.in ? `<br>IN:#${l.in.no} ${l.in.name}` : ''}`;
-                
-                // 色付きカードのログの場合に理由入力欄を追加
-                if (l.isColor) {
-                    html += `<input type="text" class="log-reason-input" placeholder="反則内容・理由を入力..." value="${l.reason || ''}" onchange="updateLogReason(${l.id}, this.value)">`;
+                if (l.isColor) { 
+                    if (l.type.includes('YELLOW')) cls += ' log-yc'; 
+                    else if (l.type.includes('RED')) cls += ' log-rc'; 
+                    else if (l.type.includes('OFR')) cls += ' log-ofr'; 
+                    div.onclick = () => openReasonModal(l.id);
                 }
-                div.innerHTML = html;
+                div.innerHTML = `<b>${l.type || '--'}</b> [${l.matchTime}] (${l.pcTime})<br>OUT:#${l.out?.no || '--'} ${l.out?.name || '(NONE)'}${l.in ? `<br>IN:#${l.in.no} ${l.in.name}` : ''}${l.reason ? `<span class="log-reason-text">${l.reason}</span>` : ''}`;
             }
             div.className = cls; el.appendChild(div);
         });
+    }
+
+    function openReasonModal(logId) {
+        const log = logs.find(x => x.id === logId); if(!log) return;
+        document.getElementById('modal-title').innerText = "Log Reason";
+        document.getElementById('modal-player-list').innerHTML = "";
+        const body = document.getElementById('modal-body-content');
+        body.innerHTML = `
+            <textarea id=\"reason-input-area\" class=\"reason-edit-area\" placeholder=\"理由を入力してください\">${log.reason || ''}</textarea>
+            <button class=\"btn-edit-save\" style=\"width:100%;\" onclick=\"saveLogReason(${logId})\">SAVE</button>
+        `;
+        document.getElementById('modal-overlay').style.display = 'flex';
+    }
+
+    function saveLogReason(logId) {
+        const val = document.getElementById('reason-input-area').value;
+        saveHistory();
+        const log = logs.find(x => x.id === logId);
+        if(log) log.reason = val;
+        closeModal();
+        renderLogs();
+        saveToStorage();
     }
 
     document.body.addEventListener('dragover', e => e.preventDefault());
