@@ -14,7 +14,7 @@
             --color-yc: #facc15; --color-rc: #ef4444; --color-ofr: #f97316;
             --stopwatch-bg: #1e293b; --stopwatch-text: #34d399;
         }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-body); color: var(--text-main); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; user-select: none; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-body); color: var(--text-main); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; user-select: none; touch-action: none; }
         header { background: #fff; padding: 10px 20px; border-bottom: 2px solid var(--border-color); flex-shrink: 0; }
         .header-top { display: flex; justify-content: space-between; align-items: center; position: relative; }
         #team-name-display { font-weight: 900; font-size: 1.4rem; color: var(--text-main); }
@@ -33,10 +33,7 @@
         .cat-limit-popup input { width: 40px; padding: 4px; font-size: 1rem; font-weight: 900; text-align: center; }
         .cat-limit-popup label { font-size: 11px; font-weight: 800; }
 
-        /* アラートの基本スタイル */
         #uncontested-alert { display: none; background: #ef4444; color: white; padding: 4px 12px; border-radius: 6px; font-weight: 900; font-size: 0.9rem; margin-right: 10px; white-space: nowrap; }
-        
-        /* 点滅が必要な時用のクラス */
         .blink-alert { animation: blink 1s infinite; }
         @keyframes blink { 0% {opacity: 1;} 50% {opacity: 0.6;} 100% {opacity: 1;} }
 
@@ -120,6 +117,9 @@
         .fr-hist-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-weight: 800; }
         .fr-hist-table th, .fr-hist-table td { border: 1px solid #ddd; padding: 12px 8px; text-align: center; }
         .fr-hist-table th { background: #f8fafc; font-size: 0.75rem; color: var(--text-sub); }
+
+        /* iPad用ドラッグ中のクローン表示 */
+        #drag-clone { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.8; display: none; }
     </style>
 </head>
 <body onload="loadFromStorage()">
@@ -180,14 +180,14 @@
         <h2>FIELD <span id="cat-info" class="cat-info-inline">A2+B+C: 0/4 | C: 0/3</span></h2>
         <div id="field-list" class="scroll-area"></div>
     </div>
-    <div class="column" ondragover="e=>e.preventDefault()" ondrop="dropToBenchArea(event)">
+    <div class="column" id="bench-area">
         <h2>Bench</h2><div id="bench-list" class="scroll-area"></div>
     </div>
     <div class="col-res-admin">
-        <div class="column" style="height: 48%; width: 100%;" ondragover="e=>e.preventDefault()" ondrop="dropToRes(event)">
+        <div class="column" id="res-area" style="height: 48%; width: 100%;">
             <h2>Reservations</h2><div id="res-list" class="scroll-area"></div>
         </div>
-        <div class="column" style="height: 50%; width: 100%; margin-top: 2%;">
+        <div class="column" id="admin-area" style="height: 50%; width: 100%; margin-top: 2%;">
             <h2>Trackers</h2><div id="admin-list" class="scroll-area"></div>
         </div>
     </div>
@@ -203,6 +203,8 @@
     </div>
 </div>
 
+<div id="drag-clone"></div>
+
 <script>
     let fieldPositions = Array.from({length: 15}, (_, i) => ({ posId: i+1, player: null }));
     let benchPlayers = [], reservations = [], adminCards = [], logs = [];
@@ -213,6 +215,10 @@
     let frHistory = { 1: [], 2: [], 3: [] };
 
     const STORAGE_KEY = "rugby_sub_manager_state_v430";
+
+    // iPad タッチ対応用グローバル変数
+    let touchDraggedElement = null;
+    let touchDraggedData = null;
 
     function saveToStorage() {
         const state = {
@@ -245,6 +251,99 @@
         }
     }
 
+    // タッチイベント処理 (iPad対応)
+    function initTouchDrag(el, data) {
+        el.addEventListener('touchstart', (e) => {
+            if (e.target.tagName === 'BUTTON' || e.target.classList.contains('pos-label')) return;
+            touchDraggedElement = el;
+            touchDraggedData = data;
+            const clone = el.cloneNode(true);
+            const cloneContainer = document.getElementById('drag-clone');
+            cloneContainer.innerHTML = '';
+            cloneContainer.appendChild(clone);
+            cloneContainer.style.display = 'block';
+            updateTouchPos(e);
+            window.dragged = data;
+        }, {passive: false});
+
+        el.addEventListener('touchmove', (e) => {
+            if (!touchDraggedElement) return;
+            e.preventDefault();
+            updateTouchPos(e);
+        }, {passive: false});
+
+        el.addEventListener('touchend', (e) => {
+            if (!touchDraggedElement) return;
+            const touch = e.changedTouches[0];
+            const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY);
+            const cloneContainer = document.getElementById('drag-clone');
+            cloneContainer.style.display = 'none';
+
+            if (dropTarget) {
+                const dropArea = dropTarget.closest('.column, .player-card, .res-card, .admin-card');
+                if (dropArea) {
+                    handleTouchDrop(dropArea, touchDraggedData);
+                }
+            }
+            touchDraggedElement = null;
+            touchDraggedData = null;
+        });
+    }
+
+    function updateTouchPos(e) {
+        const touch = e.touches[0];
+        const clone = document.getElementById('drag-clone');
+        clone.style.left = touch.clientX - 50 + 'px';
+        clone.style.top = touch.clientY - 15 + 'px';
+    }
+
+    function handleTouchDrop(target, draggedData) {
+        const benchArea = target.closest('#bench-area');
+        const resArea = target.closest('#res-area');
+        const fieldCard = target.closest('#field-list .player-card');
+        const benchCard = target.closest('#bench-list .player-card');
+        const adminCard = target.closest('.admin-card');
+
+        if (draggedData.source === 'field') {
+            const sourceItem = draggedData.item;
+            if (resArea) {
+                if (!validateFR(sourceItem.player, null, sourceItem.posId)) return;
+                saveHistory(); createCardReservation(sourceItem.player, sourceItem.posId);
+            } else if (benchArea) {
+                const p = sourceItem.player;
+                if (p && (p.status === 'rc' || p.status === 'injury')) return;
+                if (!validateFR(p, null, sourceItem.posId)) return;
+                saveHistory(); reservations.push({ id: Date.now(), out: p, in: null, posId: sourceItem.posId, type: 'Temporary', isFromAdmin: false, isCard: false });
+            } else if (fieldCard) {
+                const targetPosId = parseInt(fieldCard.querySelector('.pos-label').innerText);
+                const targetItem = fieldPositions.find(f => f.posId === targetPosId);
+                if (targetItem && sourceItem !== targetItem) {
+                    if (!validateFR(sourceItem.player, targetItem.player, sourceItem.posId)) return;
+                    if (!validateFR(targetItem.player, sourceItem.player, targetItem.posId)) return;
+                    saveHistory(); swapPlayers(sourceItem, targetItem);
+                }
+            }
+        } else if (draggedData.source === 'bench') {
+            const sourcePlayer = draggedData.p;
+            if (fieldCard) {
+                const targetPosId = parseInt(fieldCard.querySelector('.pos-label').innerText);
+                const targetItem = fieldPositions.find(f => f.posId === targetPosId);
+                if (!validateFR(targetItem.player, sourcePlayer, targetPosId)) return;
+                if (!validateCategory(targetItem.player, sourcePlayer)) return;
+                saveHistory(); createReservation(targetItem.player, sourcePlayer, targetPosId, draggedData.index, targetItem.player === null ? 'Temporary' : 'Tactical');
+            } else if (adminCard) {
+                const adminId = parseInt(adminCard.querySelector('.btn-delete').getAttribute('onclick').match(/\d+/)[0]);
+                const c = adminCards.find(x => x.id === adminId);
+                if (c) {
+                    if (!validateFR(c.out, sourcePlayer, c.posId)) return;
+                    if (!validateCategory(c.out, sourcePlayer)) return;
+                    saveHistory(); c.in = sourcePlayer; c.benchIdx = draggedData.index;
+                }
+            }
+        }
+        render();
+    }
+
     function allClear() {
         if (confirm("全てのデータを初期化します。よろしいですか？")) {
             localStorage.removeItem(STORAGE_KEY);
@@ -262,16 +361,10 @@
         document.getElementById('modal-title').innerText = "FR HISTORY";
         document.getElementById('modal-player-list').innerHTML = "";
         const body = document.getElementById('modal-body-content');
-        
-        let html = `<table class="fr-hist-table">
-            <tr><th></th><th>1人目</th><th>2人目</th></tr>`;
+        let html = `<table class="fr-hist-table"><tr><th></th><th>1人目</th><th>2人目</th></tr>`;
         [1, 2, 3].forEach(id => {
             const h = frHistory[id] || [];
-            html += `<tr>
-                <td>FR${id}</td>
-                <td>(${h[0] || ""})</td>
-                <td>(${h[1] || ""})</td>
-            </tr>`;
+            html += `<tr><td>FR${id}</td><td>(${h[0] || ""})</td><td>(${h[1] || ""})</td></tr>`;
         });
         html += `</table>`;
         body.innerHTML = html;
@@ -489,21 +582,15 @@
     function checkFRCompliance() {
         let isUncontested = false;
         let globalMinPlayers = 15;
-
         [1, 2, 3].forEach(posId => {
             const p = fieldPositions.find(fp => fp.posId === posId)?.player;
-            if (!p || !p.fr || !p.fr.includes(String(posId))) {
-                isUncontested = true;
-            }
+            if (!p || !p.fr || !p.fr.includes(String(posId))) { isUncontested = true; }
         });
-
         const alertEl = document.getElementById('uncontested-alert');
         if (isUncontested) {
             for (let i = 1; i <= 3; i++) {
                 const hist = frHistory[i] || [];
-                const p1 = hist[0]; 
-                const p2 = hist[1]; 
-
+                const p1 = hist[0]; const p2 = hist[1]; 
                 if (p1 && p2) {
                     if (['Injury / F', 'BLOOD', 'HIA', 'B / HIA'].includes(p1)) {
                         if (['YC', 'RC', 'OFR', 'OFR DECISION: RED UPGRADE'].includes(p2)) globalMinPlayers = Math.min(globalMinPlayers, 13);
@@ -521,17 +608,10 @@
                     if (['YC', 'RC', 'OFR', 'OFR DECISION: RED UPGRADE'].includes(p1)) globalMinPlayers = Math.min(globalMinPlayers, 14);
                 }
             }
-
             let currentFieldCount = fieldPositions.filter(f => f.player !== null).length;
             alertEl.innerHTML = `Uncontested scrum (${globalMinPlayers} players)`;
             alertEl.style.display = 'block';
-
-            // 修正箇所：現在の人数が規定人数より多い場合のみ点滅させる
-            if (currentFieldCount > globalMinPlayers) {
-                alertEl.classList.add('blink-alert');
-            } else {
-                alertEl.classList.remove('blink-alert');
-            }
+            if (currentFieldCount > globalMinPlayers) alertEl.classList.add('blink-alert'); else alertEl.classList.remove('blink-alert');
         } else {
             alertEl.style.display = 'none';
             alertEl.classList.remove('blink-alert');
@@ -563,7 +643,10 @@
                 ${p?.cat ? `<span class=\"attr-tag cat-tag\">${p.cat}</span>` : ''}
                 ${p?.fr?.length ? `<span class=\"attr-tag fr-tag\">${p.fr.join('')}</span>` : ''}`;
             div.draggable = !!p; 
-            div.ondragstart = () => { if(p) window.dragged = {source:'field', item}; }; 
+            if (p) {
+                div.ondragstart = () => { window.dragged = {source:'field', item}; };
+                initTouchDrag(div, {source:'field', item});
+            }
             div.ondragover = e => e.preventDefault();
             div.ondrop = e => { 
                 e.stopPropagation();
@@ -592,7 +675,10 @@
                 ${p.cat ? `<span class="attr-tag cat-tag">${p.cat}</span>` : ''}
                 ${p.fr?.length ? `<span class="attr-tag fr-tag">${p.fr.join('')}</span>` : ''}`;
             div.draggable = !isDisabled;
-            div.ondragstart = () => { if(!isDisabled) window.dragged = {source:'bench', p, index: idx}; };
+            if (!isDisabled) {
+                div.ondragstart = () => { window.dragged = {source:'bench', p, index: idx}; };
+                initTouchDrag(div, {source:'bench', p, index: idx});
+            }
             div.ondragover = e => { if(!isDisabled) e.preventDefault(); };
             div.ondrop = e => {
                 e.stopPropagation();
@@ -647,8 +733,7 @@
                 div.innerHTML = `<button class="btn-delete" onclick="delItem('res',${r.id})">×</button>
                     <div class="card-row"><span>OUT</span><b class="${outColor}">${outName}</b></div>
                     <div class="card-row in-row"><span>IN</span><b class="${inColor}">${inName}</b></div>
-                    ${!r.isFromAdmin ? `
-                    <div class="btn-group">
+                    ${!r.isFromAdmin ? `<div class="btn-group">
                         <button class="${r.type==='Tactical'?'active-tactical':''}" onclick="setResType(${r.id},'Tactical')">Tactical</button>
                         <button class="${r.type==='Injury'?'active-injury':''}" onclick="setResType(${r.id},'Injury')">Injury</button>
                         <button class="${r.type==='Injury / F'?'active-medical':''}" onclick="setResType(${r.id},'Injury / F')">Injury / F</button>
@@ -666,13 +751,11 @@
     function setResType(id, type) { saveHistory(); const r = reservations.find(x => x.id === id); if(r) r.type = type; renderRes(); }
 
     function executeRes(id) {
-        saveHistory(); 
-        const r = reservations.find(x => x.id === id); if (!r) return;
+        saveHistory(); const r = reservations.find(x => x.id === id); if (!r) return;
         const f = fieldPositions.find(p => p.posId === r.posId);
         const matchTime = formatTime(elapsedTime); const pcTime = getPCNow();
         const cleanupBench = (p) => { if (p) benchPlayers = benchPlayers.map(x => (x && x.id === p.id) ? null : x); };
         cleanupBench(r.out); cleanupBench(r.in);
-
         if ([1, 2, 3].includes(r.posId)) {
             const forbidden = ['SWAP', 'Temporary'];
             if (!forbidden.includes(r.type)) {
@@ -685,7 +768,6 @@
                 frHistory[r.posId].push(displayType);
             }
         }
-
         if (r.isCard) {
             const statusMap = { 'YELLOW': 'yc', 'RED': 'rc', 'OFR': 'ofr' };
             logs.unshift({ id: Date.now(), type: r.type, matchTime: matchTime, pcTime: pcTime, out: r.out, in: null, isColor: true, reason: "" });
@@ -698,9 +780,7 @@
             adminCards.push({ id: Date.now(), type: r.type, out: r.out, in: null, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: initialRemaining, nextAction: r.type === 'RED' ? 'Replacement' : 'Return' });
         } else if (r.type === 'Temporary') {
             const cF = f.player; f.player = r.in;
-            if (cF) {
-                const eIdx = benchPlayers.indexOf(null); if (eIdx !== -1) benchPlayers[eIdx] = cF; else benchPlayers.push(cF);
-            }
+            if (cF) { const eIdx = benchPlayers.indexOf(null); if (eIdx !== -1) benchPlayers[eIdx] = cF; else benchPlayers.push(cF); }
             logs.unshift({ id: Date.now(), type: 'Temporary (OUT)', matchTime: matchTime, pcTime: pcTime, out: cF, in: r.in });
         } else {
             if (r.out) {
@@ -708,14 +788,10 @@
                 if(r.adminType === 'RED' || r.type === 'RED' || r.ofrDecision === 'RED UPGRADE') s = 'rc';
                 else if(r.type === 'Tactical') s = 'tactical';
                 else if(r.type === 'Injury') s = 'injury';
-                
                 if (isMedicalType(r.type) && !r.isFromAdmin && r.type !== 'Injury / F') {
-                    s = 'medical_red'; 
-                    const mins = r.type === 'Blood bin' ? 15 : 12;
+                    s = 'medical_red'; const mins = r.type === 'Blood bin' ? 15 : 12;
                     adminCards.push({ id: Date.now(), type: r.type, out: {...r.out, status: s}, in: r.in, posId: r.posId, matchTime: matchTime, pcTime: pcTime, remainingMs: mins * 60000, nextAction: 'Return' });
-                } else if(r.type === 'Injury / F') {
-                    s = 'medical_red';
-                }
+                } else if(r.type === 'Injury / F') { s = 'medical_red'; }
                 const outPlayer = {...r.out, status: s};
                 const idx = benchPlayers.indexOf(null); if (idx !== -1) benchPlayers[idx] = outPlayer; else benchPlayers.push(outPlayer);
             }
@@ -729,6 +805,7 @@
         const el = document.getElementById('admin-list'); el.innerHTML = '';
         adminCards.forEach(c => {
             const div = document.createElement('div'); div.className = 'admin-card';
+            div.ondragover = e => e.preventDefault();
             div.ondrop = e => {
                 e.stopPropagation();
                 if (window.dragged) {
@@ -778,15 +855,9 @@
         saveHistory(); const c = adminCards.find(x => x.id === id); if(!c) return; c.ofrDecision = d; 
         logs.unshift({ id: Date.now(), type: `OFR DECISION: ${d}`, matchTime: formatTime(elapsedTime), pcTime: getPCNow(), out: c.out, isColor: true, reason: "" }); 
         if(d === 'RED UPGRADE') { 
-            c.nextAction = 'Replacement'; 
-            c.remainingMs = 1200000; 
-            if([1,2,3].includes(c.posId)) frHistory[c.posId].push('OFR DECISION: RED UPGRADE');
-            render(); 
-            openPlayerModal(id); 
-        } else { 
-            c.nextAction = 'Return'; 
-            render(); 
-        } 
+            c.nextAction = 'Replacement'; c.remainingMs = 1200000; if([1,2,3].includes(c.posId)) frHistory[c.posId].push('OFR DECISION: RED UPGRADE');
+            render(); openPlayerModal(id); 
+        } else { c.nextAction = 'Return'; render(); } 
     }
     
     function openPlayerModal(cid) { 
@@ -810,13 +881,8 @@
     function returnToRes(id) { 
         saveHistory(); const c = adminCards.find(x => x.id === id); if (!c) return; 
         if (['YELLOW', 'RED', 'OFR'].includes(c.type) && ['Tactical', 'Injury', 'Replacement'].includes(c.nextAction) && !c.in) { alert("交代する選手を選択してください。"); return; } 
-        let outP, inP; 
-        if (c.nextAction === 'Return') { outP = c.in; inP = c.out; } else { outP = c.out; inP = c.in; } 
-        reservations.push({ 
-            id: Date.now(), out: outP, in: inP, posId: c.posId, benchIdx: c.benchIdx, 
-            type: c.nextAction === 'Replacement' ? 'Tactical' : c.nextAction, 
-            isFromAdmin: true, adminType: c.type, remainingMs: c.remainingMs, ofrDecision: c.ofrDecision 
-        }); 
+        let outP, inP; if (c.nextAction === 'Return') { outP = c.in; inP = c.out; } else { outP = c.out; inP = c.in; } 
+        reservations.push({ id: Date.now(), out: outP, in: inP, posId: c.posId, benchIdx: c.benchIdx, type: c.nextAction === 'Replacement' ? 'Tactical' : c.nextAction, isFromAdmin: true, adminType: c.type, remainingMs: c.remainingMs, ofrDecision: c.ofrDecision }); 
         adminCards = adminCards.filter(x => x.id !== id); render(); 
     }
 
@@ -846,21 +912,13 @@
         document.getElementById('modal-title').innerText = "Log Reason";
         document.getElementById('modal-player-list').innerHTML = "";
         const body = document.getElementById('modal-body-content');
-        body.innerHTML = `
-            <textarea id=\"reason-input-area\" class=\"reason-edit-area\" placeholder=\"理由を入力してください\">${log.reason || ''}</textarea>
-            <button class=\"btn-edit-save\" style=\"width:100%;\" onclick=\"saveLogReason(${logId})\">SAVE</button>
-        `;
+        body.innerHTML = `<textarea id=\"reason-input-area\" class=\"reason-edit-area\" placeholder=\"理由を入力してください\">${log.reason || ''}</textarea><button class=\"btn-edit-save\" style=\"width:100%;\" onclick=\"saveLogReason(${logId})\">SAVE</button>`;
         document.getElementById('modal-overlay').style.display = 'flex';
     }
 
     function saveLogReason(logId) {
         const val = document.getElementById('reason-input-area').value;
-        saveHistory();
-        const log = logs.find(x => x.id === logId);
-        if(log) log.reason = val;
-        closeModal();
-        renderLogs();
-        saveToStorage();
+        saveHistory(); const log = logs.find(x => x.id === logId); if(log) log.reason = val; closeModal(); renderLogs(); saveToStorage();
     }
 
     document.body.addEventListener('dragover', e => e.preventDefault());
